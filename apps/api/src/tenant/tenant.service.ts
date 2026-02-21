@@ -21,7 +21,7 @@ export class TenantService {
     return this.tenantRepository.find();
   }
 
-  async findOne(id: number): Promise<Tenant> {
+  async findOne(id: string): Promise<Tenant> {
     const tenant = await this.tenantRepository.findOne({ where: { id } });
     if (!tenant) {
       throw new NotFoundException(`Tenant with ID "${id}" not found`);
@@ -29,13 +29,13 @@ export class TenantService {
     return tenant;
   }
 
-  async update(id: number, updateTenantDto: UpdateTenantDto): Promise<Tenant> {
+  async update(id: string, updateTenantDto: UpdateTenantDto): Promise<Tenant> {
     const tenant = await this.findOne(id);
     this.tenantRepository.merge(tenant, updateTenantDto);
     return this.tenantRepository.save(tenant);
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: string): Promise<void> {
     const tenant = await this.findOne(id);
     await this.tenantRepository.remove(tenant);
   }

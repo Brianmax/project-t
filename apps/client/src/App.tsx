@@ -23,10 +23,10 @@ export default function App() {
           <Route path="properties" element={<Properties />} />
           <Route path="properties/:id" element={<PropertyDetail />} />
           <Route path="departments" element={<Departments />} />
-          <Route path="department/:id" element={<DepartmentDashboard />} />
-          <Route path="department/:id/billing" element={<DepartmentBilling />} />
+          <Route path="departments/:id" element={<DepartmentDashboard />} />
+          <Route path="departments/:id/billing" element={<DepartmentBilling />} />
           <Route path="tenants" element={<Tenants />} />
-          <Route path="tenant/:id" element={<TenantDashboard />} />
+          <Route path="tenants/:id" element={<TenantDashboard />} />
           <Route path="contracts" element={<Contracts />} />
           <Route path="meters" element={<Meters />} />
           <Route path="readings" element={<MeterReadings />} />

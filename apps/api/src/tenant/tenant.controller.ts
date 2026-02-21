@@ -6,12 +6,14 @@ import {
   Patch,
   Param,
   Delete,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { TenantService } from './tenant.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 
-@Controller('tenant')
+@Controller('tenants')
 export class TenantController {
   constructor(private readonly tenantService: TenantService) {}
 
@@ -27,16 +29,17 @@ export class TenantController {
 
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.tenantService.findOne(+id);
+    return this.tenantService.findOne(id);
   }
 
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateTenantDto: UpdateTenantDto) {
-    return this.tenantService.update(+id, updateTenantDto);
+    return this.tenantService.update(id, updateTenantDto);
   }
 
   @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
-    return this.tenantService.remove(+id);
+    return this.tenantService.remove(id);
   }
 }

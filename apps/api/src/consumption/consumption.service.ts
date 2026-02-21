@@ -23,18 +23,25 @@ export class ConsumptionService {
   ) {}
 
   async calculateConsumptionForPeriod(
-    departmentId: number,
+    departmentId: string,
     meterType: MeterType,
     startDate: Date,
     endDate: Date,
   ): Promise<{ consumption: number; cost: number }> {
     const departmentMeter = await this.departmentMeterRepository.findOne({
       where: { departmentId, meterType },
+      relations: ['department'],
     });
 
     if (!departmentMeter) {
       return { consumption: 0, cost: 0 };
     }
+
+    const property = departmentMeter.department?.propertyId
+      ? await this.propertyRepository.findOne({
+          where: { id: departmentMeter.department.propertyId },
+        })
+      : null;
 
     const readings = await this.meterReadingRepository.find({
       where: {
@@ -45,7 +52,7 @@ export class ConsumptionService {
     });
 
     if (readings.length < 2) {
-      return { consumption: 0, cost: 0 }; // Need at least two readings to calculate consumption (start and end)
+      return { consumption: 0, cost: 0 };
     }
 
     const firstReading = readings[0].reading;
@@ -55,15 +62,17 @@ export class ConsumptionService {
     let cost = 0;
 
     if (meterType === MeterType.LIGHT) {
-      cost = consumption * this.COST_PER_UNIT_LIGHT;
+      const rate = Number(property?.lightCostPerUnit ?? this.COST_PER_UNIT_LIGHT);
+      cost = consumption * rate;
     } else if (meterType === MeterType.WATER) {
-      cost = consumption * this.COST_PER_UNIT_WATER;
+      const rate = Number(property?.waterCostPerUnit ?? this.COST_PER_UNIT_WATER);
+      cost = consumption * rate;
     }
 
     return { consumption, cost };
   }
 
-  async calculateCurrentConsumption(departmentId: number) {
+  async calculateCurrentConsumption(departmentId: string) {
     // Find the department to get its propertyId
     const deptMeter = await this.departmentMeterRepository.findOne({
       where: { departmentId },

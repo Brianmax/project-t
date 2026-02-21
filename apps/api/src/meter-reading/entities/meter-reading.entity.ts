@@ -9,8 +9,8 @@ import { DepartmentMeter } from '../../department-meter/entities/department-mete
 
 @Entity()
 export class MeterReading {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   reading: number;
@@ -24,6 +24,6 @@ export class MeterReading {
   @JoinColumn({ name: 'department_meter_id' })
   departmentMeter: DepartmentMeter;
 
-  @Column({ name: 'department_meter_id' })
-  departmentMeterId: number;
+  @Column({ name: 'department_meter_id', type: 'uuid' })
+  departmentMeterId: string;
 }

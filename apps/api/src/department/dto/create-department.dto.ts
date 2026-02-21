@@ -4,6 +4,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
 } from 'class-validator';
 
 export class CreateDepartmentDto {
@@ -19,9 +20,9 @@ export class CreateDepartmentDto {
   @IsNotEmpty()
   numberOfRooms: number;
 
-  @IsNumber()
+  @IsUUID()
   @IsNotEmpty()
-  propertyId: number;
+  propertyId: string;
 
   @IsNumber()
   @IsOptional()

@@ -108,7 +108,7 @@ export class DepartmentService {
     return this.departmentRepository.find({ relations: ['property'] });
   }
 
-  async findOne(id: number): Promise<Department> {
+  async findOne(id: string): Promise<Department> {
     const department = await this.departmentRepository.findOne({
       where: { id },
       relations: ['property'],
@@ -120,7 +120,7 @@ export class DepartmentService {
   }
 
   async update(
-    id: number,
+    id: string,
     updateDepartmentDto: UpdateDepartmentDto,
   ): Promise<Department> {
     const department = await this.findOne(id);
@@ -141,7 +141,7 @@ export class DepartmentService {
     return this.departmentRepository.save(department);
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: string): Promise<void> {
     const department = await this.findOne(id);
     await this.departmentRepository.remove(department);
   }

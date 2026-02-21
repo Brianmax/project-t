@@ -5,18 +5,19 @@ import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
+import { inputCls, btnPrimaryCls } from '../lib/styles';
 
-interface Department { id: number; name: string; }
-interface Property { id: number; name: string; }
+interface Department { id: string; name: string; }
+interface Property { id: string; name: string; }
 
 interface DepartmentMeter {
-  id: number;
+  id: string;
   meterType: 'light' | 'water';
   department: Department;
 }
 
 interface PropertyMeter {
-  id: number;
+  id: string;
   meterType: 'light' | 'water';
   property: Property;
 }
@@ -39,10 +40,10 @@ export default function Meters() {
 
   useEffect(() => {
     Promise.all([
-      apiFetch<DepartmentMeter[]>('/department-meter'),
-      apiFetch<PropertyMeter[]>('/property-meter'),
-      apiFetch<Department[]>('/department'),
-      apiFetch<Property[]>('/property'),
+      apiFetch<DepartmentMeter[]>('/department-meters'),
+      apiFetch<PropertyMeter[]>('/property-meters'),
+      apiFetch<Department[]>('/departments'),
+      apiFetch<Property[]>('/properties'),
     ])
       .then(([dm, pm, d, p]) => {
         setDeptMeters(dm);
@@ -60,15 +61,15 @@ export default function Meters() {
     setSubmitting(true);
     try {
       if (tab === 'department') {
-        const added = await apiPost<DepartmentMeter>('/department-meter', {
+        const added = await apiPost<DepartmentMeter>('/department-meters', {
           meterType,
-          departmentId: Number(selectedId),
+          departmentId: selectedId,
         });
         setDeptMeters((prev) => [...prev, added]);
       } else {
-        const added = await apiPost<PropertyMeter>('/property-meter', {
+        const added = await apiPost<PropertyMeter>('/property-meters', {
           meterType,
-          propertyId: Number(selectedId),
+          propertyId: selectedId,
         });
         setPropMeters((prev) => [...prev, added]);
       }
@@ -91,8 +92,6 @@ export default function Meters() {
   if (loading) return <Spinner />;
 
   const meters = tab === 'department' ? deptMeters : propMeters;
-  const inputCls = "w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition-all text-sm";
-
   return (
     <div className="animate-fade-in">
       <PageHeader
@@ -104,24 +103,24 @@ export default function Meters() {
       />
 
       {error && (
-        <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="mb-4 px-4 py-3 rounded-xl bg-status-danger-bg border border-status-danger-border text-status-danger-text text-sm">
           {error}
         </div>
       )}
 
-      <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit mb-6">
+      <div className="flex gap-1 bg-surface-raised p-1 rounded-xl w-fit mb-6">
         <button
           onClick={() => setTab('department')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            tab === 'department' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+            tab === 'department' ? 'bg-surface text-on-surface shadow-sm ring-1 ring-black/[0.04]' : 'text-on-surface-muted hover:text-on-surface-medium'
           }`}
         >
           Departamento ({deptMeters.length})
         </button>
         <button
           onClick={() => setTab('property')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            tab === 'property' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+            tab === 'property' ? 'bg-surface text-on-surface shadow-sm ring-1 ring-black/[0.04]' : 'text-on-surface-muted hover:text-on-surface-medium'
           }`}
         >
           Propiedad ({propMeters.length})
@@ -135,28 +134,28 @@ export default function Meters() {
           description={`No hay medidores de ${tab === 'department' ? 'departamento' : 'propiedad'} registrados.`}
         />
       ) : (
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div className="bg-surface rounded-2xl border border-border overflow-hidden shadow-sm">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="text-left px-5 py-3 font-medium text-slate-600">ID</th>
-                <th className="text-left px-5 py-3 font-medium text-slate-600">Tipo</th>
-                <th className="text-left px-5 py-3 font-medium text-slate-600">
+              <tr className="border-b border-border-light bg-surface-alt/80">
+                <th className="text-left px-5 py-3 text-[13px] font-semibold text-on-surface-medium uppercase tracking-wider">ID</th>
+                <th className="text-left px-5 py-3 text-[13px] font-semibold text-on-surface-medium uppercase tracking-wider">Tipo</th>
+                <th className="text-left px-5 py-3 text-[13px] font-semibold text-on-surface-medium uppercase tracking-wider">
                   {tab === 'department' ? 'Departamento' : 'Propiedad'}
                 </th>
               </tr>
             </thead>
             <tbody>
               {meters.map((m) => (
-                <tr key={m.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
-                  <td className="px-5 py-3.5 font-mono text-slate-500">#{m.id}</td>
+                <tr key={m.id} className="border-b border-border-light last:border-0 hover:bg-surface-alt/50 transition-colors">
+                  <td className="px-5 py-3.5 font-mono text-on-surface-muted">#{m.id}</td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-2">
                       <MeterIcon type={m.meterType} />
-                      <span className="capitalize font-medium text-slate-900">{m.meterType === 'water' ? 'Agua' : 'Luz'}</span>
+                      <span className="capitalize font-medium text-on-surface">{m.meterType === 'water' ? 'Agua' : 'Luz'}</span>
                     </div>
                   </td>
-                  <td className="px-5 py-3.5 text-slate-600">
+                  <td className="px-5 py-3.5 text-on-surface-medium">
                     {tab === 'department'
                       ? (m as DepartmentMeter).department?.name || 'N/A'
                       : (m as PropertyMeter).property?.name || 'N/A'}
@@ -170,12 +169,12 @@ export default function Meters() {
 
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={`Nuevo Medidor (${tab === 'department' ? 'Departamento' : 'Propiedad'})`}>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="flex gap-1 bg-slate-100 p-1 rounded-xl mb-2">
+          <div className="flex gap-1 bg-surface-raised p-1 rounded-xl mb-2">
             <button
               type="button"
               onClick={() => { setTab('department'); setSelectedId(''); }}
-              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                tab === 'department' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                tab === 'department' ? 'bg-surface text-on-surface shadow-sm ring-1 ring-black/[0.04]' : 'text-on-surface-muted hover:text-on-surface-medium'
               }`}
             >
               Departamento
@@ -183,22 +182,22 @@ export default function Meters() {
             <button
               type="button"
               onClick={() => { setTab('property'); setSelectedId(''); }}
-              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                tab === 'property' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                tab === 'property' ? 'bg-surface text-on-surface shadow-sm ring-1 ring-black/[0.04]' : 'text-on-surface-muted hover:text-on-surface-medium'
               }`}
             >
               Propiedad
             </button>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Medidor</label>
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Tipo de Medidor</label>
             <select value={meterType} onChange={(e) => setMeterType(e.target.value as 'light' | 'water')} className={inputCls}>
               <option value="light">Luz</option>
               <option value="water">Agua</option>
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
               {tab === 'department' ? 'Departamento' : 'Propiedad'}
             </label>
             <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} required className={inputCls}>
@@ -208,7 +207,7 @@ export default function Meters() {
               ))}
             </select>
           </div>
-          <button type="submit" disabled={submitting} className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 text-white text-sm font-medium rounded-xl transition-colors">
+          <button type="submit" disabled={submitting} className={btnPrimaryCls}>
             {submitting ? 'Guardando...' : 'Agregar Medidor'}
           </button>
         </form>

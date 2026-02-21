@@ -34,7 +34,7 @@ export class PropertyService {
     return this.propertyRepository.find();
   }
 
-  async findOne(id: number): Promise<Property> {
+  async findOne(id: string): Promise<Property> {
     const property = await this.propertyRepository.findOne({ where: { id } });
     if (!property) {
       throw new NotFoundException(`Property with ID "${id}" not found`);
@@ -43,7 +43,7 @@ export class PropertyService {
   }
 
   async update(
-    id: number,
+    id: string,
     updatePropertyDto: UpdatePropertyDto,
   ): Promise<Property> {
     const property = await this.findOne(id);
@@ -51,7 +51,7 @@ export class PropertyService {
     return this.propertyRepository.save(property);
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: string): Promise<void> {
     await this.findOne(id);
 
     await this.dataSource.transaction(async (manager) => {
@@ -61,7 +61,7 @@ export class PropertyService {
       });
       const departmentIds = departments.map((department) => department.id);
 
-      let relatedTenantIds: number[] = [];
+      let relatedTenantIds: string[] = [];
 
       if (departmentIds.length > 0) {
         const contracts = await manager.find(Contract, {
@@ -106,7 +106,7 @@ export class PropertyService {
     });
   }
 
-  async findTenantsByProperty(id: number): Promise<Tenant[]> {
+  async findTenantsByProperty(id: string): Promise<Tenant[]> {
     await this.findOne(id);
 
     const contracts = await this.contractRepository.find({
@@ -128,7 +128,7 @@ export class PropertyService {
     return uniqueTenants;
   }
 
-  async findDepartmentsByProperty(id: number): Promise<Department[]> {
+  async findDepartmentsByProperty(id: string): Promise<Department[]> {
     await this.findOne(id);
 
     return this.departmentRepository.find({

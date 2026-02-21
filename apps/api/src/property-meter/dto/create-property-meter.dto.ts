@@ -1,4 +1,4 @@
-import { IsEnum, IsNotEmpty, IsNumber } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsUUID } from 'class-validator';
 import { MeterType } from '../../department-meter/entities/department-meter.entity';
 
 export class CreatePropertyMeterDto {
@@ -6,7 +6,7 @@ export class CreatePropertyMeterDto {
   @IsNotEmpty()
   meterType: MeterType;
 
-  @IsNumber()
+  @IsUUID()
   @IsNotEmpty()
-  propertyId: number;
+  propertyId: string;
 }

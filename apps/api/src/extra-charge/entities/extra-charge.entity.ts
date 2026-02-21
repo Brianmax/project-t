@@ -3,8 +3,8 @@ import { Contract } from '../../contract/entities/contract.entity';
 
 @Entity()
 export class ExtraCharge {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column()
   description: string;
@@ -21,6 +21,6 @@ export class ExtraCharge {
   @ManyToOne(() => Contract, (contract) => contract.id)
   contract: Contract;
 
-  @Column({ name: 'contract_id' })
-  contractId: number;
+  @Column({ name: 'contract_id', type: 'uuid' })
+  contractId: string;
 }

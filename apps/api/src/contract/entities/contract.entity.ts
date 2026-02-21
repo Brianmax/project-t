@@ -4,8 +4,8 @@ import { Department } from '../../department/entities/department.entity';
 
 @Entity()
 export class Contract {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column({ type: 'date' })
   startDate: Date;
@@ -25,12 +25,12 @@ export class Contract {
   @ManyToOne(() => Tenant, (tenant) => tenant.id)
   tenant: Tenant;
 
-  @Column({ name: 'tenant_id' })
-  tenantId: number; // Foreign key for Tenant
+  @Column({ name: 'tenant_id', type: 'uuid' })
+  tenantId: string; // Foreign key for Tenant
 
   @ManyToOne(() => Department, (department) => department.id)
   department: Department;
 
-  @Column({ name: 'department_id' })
-  departmentId: number; // Foreign key for Department
+  @Column({ name: 'department_id', type: 'uuid' })
+  departmentId: string; // Foreign key for Department
 }

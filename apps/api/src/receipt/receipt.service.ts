@@ -14,8 +14,8 @@ export interface ReceiptItem {
 }
 
 export interface Receipt {
-  id?: number;
-  contractId: number;
+  id?: string;
+  contractId: string;
   month: number;
   year: number;
   status: ReceiptStatus;
@@ -44,7 +44,7 @@ export class ReceiptService {
   ) {}
 
   async previewReceipt(
-    contractId: number,
+    contractId: string,
     month: number,
     year: number,
   ): Promise<Receipt> {
@@ -60,18 +60,32 @@ export class ReceiptService {
   }
 
   async issueReceipt(
-    contractId: number,
+    contractId: string,
     month: number,
     year: number,
   ): Promise<Receipt> {
+    // Always recalculate to get the latest extra charges and consumption
+    const calculated = await this.calculateReceipt(contractId, month, year);
+
     const existing = await this.receiptRepository.findOne({
       where: { contractId, month, year },
     });
+
     if (existing) {
-      return this.toReceipt(existing);
+      // Update existing receipt with new calculation
+      existing.tenantName = calculated.tenantName;
+      existing.departmentName = calculated.departmentName;
+      existing.propertyAddress = calculated.propertyAddress;
+      existing.period = calculated.period;
+      existing.items = calculated.items as any;
+      existing.totalPayments = calculated.totalPayments;
+      existing.totalDue = calculated.totalDue;
+      existing.balance = calculated.balance;
+      const saved = await this.receiptRepository.save(existing);
+      return this.toReceipt(saved);
     }
 
-    const calculated = await this.calculateReceipt(contractId, month, year);
+    // Create new receipt
     const saved = await this.receiptRepository.save(
       this.receiptRepository.create({
         ...calculated,
@@ -82,7 +96,7 @@ export class ReceiptService {
   }
 
   async updateReceiptStatus(
-    contractId: number,
+    contractId: string,
     month: number,
     year: number,
     status: ReceiptStatus,
@@ -99,6 +113,23 @@ export class ReceiptService {
     receipt.status = status;
     const saved = await this.receiptRepository.save(receipt);
     return this.toReceipt(saved);
+  }
+
+  async findPendingReceipts(): Promise<Receipt[]> {
+    const receipts = await this.receiptRepository.find({
+      where: {
+        status: ReceiptStatus.APPROVED,
+      },
+      order: {
+        year: 'DESC',
+        month: 'DESC',
+      },
+    });
+
+    // Filter receipts with negative balance (amount owed)
+    return receipts
+      .map((r) => this.toReceipt(r))
+      .filter((r) => r.balance < 0);
   }
 
   private toReceipt(record: ReceiptEntity): Receipt {
@@ -123,7 +154,7 @@ export class ReceiptService {
   }
 
   private async calculateReceipt(
-    contractId: number,
+    contractId: string,
     month: number,
     year: number,
   ): Promise<Omit<Receipt, 'id' | 'status'>> {
@@ -146,17 +177,29 @@ export class ReceiptService {
       },
     });
 
-    const currentConsumption =
-      await this.consumptionService.calculateCurrentConsumption(
+    // Use period-specific consumption instead of current consumption
+    const lightConsumptionData =
+      await this.consumptionService.calculateConsumptionForPeriod(
         contract.department.id,
+        MeterType.LIGHT,
+        periodStart,
+        periodEnd,
       );
+    const waterConsumptionData =
+      await this.consumptionService.calculateConsumptionForPeriod(
+        contract.department.id,
+        MeterType.WATER,
+        periodStart,
+        periodEnd,
+      );
+
     const lightConsumption = {
-      consumption: currentConsumption[MeterType.LIGHT]?.consumption ?? 0,
-      cost: currentConsumption[MeterType.LIGHT]?.cost ?? 0,
+      consumption: lightConsumptionData.consumption,
+      cost: lightConsumptionData.cost,
     };
     const waterConsumption = {
-      consumption: currentConsumption[MeterType.WATER]?.consumption ?? 0,
-      cost: currentConsumption[MeterType.WATER]?.cost ?? 0,
+      consumption: waterConsumptionData.consumption,
+      cost: waterConsumptionData.cost,
     };
 
     const receiptItems: ReceiptItem[] = [];

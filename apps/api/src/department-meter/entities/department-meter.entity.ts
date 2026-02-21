@@ -14,8 +14,8 @@ export enum MeterType {
 
 @Entity()
 export class DepartmentMeter {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column({ type: 'enum', enum: MeterType })
   meterType: MeterType;
@@ -26,6 +26,6 @@ export class DepartmentMeter {
   @JoinColumn({ name: 'department_id' })
   department: Department;
 
-  @Column({ name: 'department_id' })
-  departmentId: number;
+  @Column({ name: 'department_id', type: 'uuid' })
+  departmentId: string;
 }

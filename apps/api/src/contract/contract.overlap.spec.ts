@@ -53,19 +53,19 @@ describe('ContractService Availability Check', () => {
   describe('create', () => {
     it('should throw BadRequestException if department is not available', async () => {
       const createDto = {
-        tenantId: 1,
-        departmentId: 1,
-        startDate: new Date('2024-01-01'),
-        endDate: new Date('2024-12-31'),
+        tenantId: '1',
+        departmentId: '1',
+        startDate: '2024-01-01',
+        endDate: '2024-12-31',
         rentAmount: 1000,
         advancePayment: 1000,
         guaranteeDeposit: 1000,
       };
 
-      mockTenantRepository.findOne.mockResolvedValue({ id: 1 });
+      mockTenantRepository.findOne.mockResolvedValue({ id: '1' });
       // Department exists but isAvailable = false
       mockDepartmentRepository.findOne.mockResolvedValue({
-        id: 1,
+        id: '1',
         name: 'Dept 101',
         isAvailable: false,
       });
@@ -79,22 +79,22 @@ describe('ContractService Availability Check', () => {
 
     it('should create contract and mark department as unavailable if available', async () => {
       const createDto = {
-        tenantId: 1,
-        departmentId: 1,
-        startDate: new Date('2024-01-01'),
-        endDate: new Date('2024-12-31'),
+        tenantId: '1',
+        departmentId: '1',
+        startDate: '2024-01-01',
+        endDate: '2024-12-31',
         rentAmount: 1000,
         advancePayment: 1000,
         guaranteeDeposit: 1000,
       };
 
-      mockTenantRepository.findOne.mockResolvedValue({ id: 1 });
+      mockTenantRepository.findOne.mockResolvedValue({ id: '1' });
       // Department exists and isAvailable = true
-      const mockDepartment = { id: 1, name: 'Dept 101', isAvailable: true };
+      const mockDepartment = { id: '1', name: 'Dept 101', isAvailable: true };
       mockDepartmentRepository.findOne.mockResolvedValue(mockDepartment);
 
       mockContractRepository.create.mockReturnValue(createDto);
-      mockContractRepository.save.mockResolvedValue({ id: 1, ...createDto });
+      mockContractRepository.save.mockResolvedValue({ id: '1', ...createDto });
 
       const result = await service.create(createDto);
 
@@ -110,12 +110,12 @@ describe('ContractService Availability Check', () => {
 
   describe('remove', () => {
     it('should remove contract and mark department as available', async () => {
-      const mockDepartment = { id: 1, name: 'Dept 101', isAvailable: false };
-      const mockContract = { id: 1, department: mockDepartment };
+      const mockDepartment = { id: '1', name: 'Dept 101', isAvailable: false };
+      const mockContract = { id: '1', department: mockDepartment };
 
       mockContractRepository.findOne.mockResolvedValue(mockContract);
 
-      await service.remove(1);
+      await service.remove('1');
 
       expect(mockDepartment.isAvailable).toBe(true);
       expect(mockDepartmentRepository.save).toHaveBeenCalledWith(

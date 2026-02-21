@@ -18,8 +18,8 @@ export enum PaymentType {
 
 @Entity()
 export class Payment {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   amount: number;
@@ -37,6 +37,6 @@ export class Payment {
   @JoinColumn({ name: 'contract_id' })
   contract: Contract;
 
-  @Column({ name: 'contract_id' })
-  contractId: number;
+  @Column({ name: 'contract_id', type: 'uuid' })
+  contractId: string;
 }

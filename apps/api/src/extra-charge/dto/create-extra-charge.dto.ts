@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsNumber, IsString } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsString, IsUUID } from 'class-validator';
 
 export class CreateExtraChargeDto {
   @IsString()
@@ -17,7 +17,7 @@ export class CreateExtraChargeDto {
   @IsNotEmpty()
   year: number;
 
-  @IsNumber()
+  @IsUUID()
   @IsNotEmpty()
-  contractId: number;
+  contractId: string;
 }

@@ -61,13 +61,14 @@ export class ContractService {
     return this.contractRepository.save(contract);
   }
 
-  async findAll(): Promise<Contract[]> {
+  async findAll(departmentId?: string): Promise<Contract[]> {
     return this.contractRepository.find({
+      where: departmentId ? { departmentId } : {},
       relations: ['tenant', 'department'],
     });
   }
 
-  async findOne(id: number): Promise<Contract> {
+  async findOne(id: string): Promise<Contract> {
     const contract = await this.contractRepository.findOne({
       where: { id },
       relations: ['tenant', 'department'],
@@ -79,7 +80,7 @@ export class ContractService {
   }
 
   async update(
-    id: number,
+    id: string,
     updateContractDto: UpdateContractDto,
   ): Promise<Contract> {
     const contract = await this.findOne(id);
@@ -112,7 +113,7 @@ export class ContractService {
     return this.contractRepository.save(contract);
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: string): Promise<void> {
     const contract = await this.findOne(id);
 
     // Mark department as available again

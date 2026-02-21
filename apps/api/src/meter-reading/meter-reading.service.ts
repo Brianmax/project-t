@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
@@ -12,6 +13,8 @@ import { DepartmentMeter } from '../department-meter/entities/department-meter.e
 
 @Injectable()
 export class MeterReadingService {
+  private readonly logger = new Logger(MeterReadingService.name);
+
   constructor(
     @InjectRepository(MeterReading)
     private readonly meterReadingRepository: Repository<MeterReading>,
@@ -22,27 +25,51 @@ export class MeterReadingService {
   async create(
     createMeterReadingDto: CreateMeterReadingDto,
   ): Promise<MeterReading> {
+    const { departmentMeterId, reading, date } = createMeterReadingDto;
+    this.logger.log(
+      `Creating reading: meterId=${departmentMeterId} reading=${reading} date=${date}`,
+    );
+
     const departmentMeter = await this.departmentMeterRepository.findOne({
-      where: { id: createMeterReadingDto.departmentMeterId },
+      where: { id: departmentMeterId },
+      relations: ['department'],
     });
     if (!departmentMeter) {
+      this.logger.warn(`DepartmentMeter not found: id=${departmentMeterId}`);
       throw new BadRequestException(
-        `DepartmentMeter with ID "${createMeterReadingDto.departmentMeterId}" not found`,
+        `DepartmentMeter with ID "${departmentMeterId}" not found`,
       );
+    }
+    this.logger.log(
+      `Meter resolved: type=${departmentMeter.meterType} departmentId=${departmentMeter.departmentId}`,
+    );
+
+    const lastReading = await this.meterReadingRepository.findOne({
+      where: { departmentMeterId },
+      order: { date: 'DESC' },
+    });
+    if (lastReading) {
+      this.logger.log(
+        `Previous reading: value=${lastReading.reading} date=${lastReading.date}`,
+      );
+    } else {
+      this.logger.log(`No previous reading found for meter ${departmentMeterId}`);
     }
 
     const meterReading = this.meterReadingRepository.create({
       ...createMeterReadingDto,
-      departmentMeter: departmentMeter,
+      departmentMeter,
     });
-    return this.meterReadingRepository.save(meterReading);
+    const saved = await this.meterReadingRepository.save(meterReading);
+    this.logger.log(`Reading saved: id=${saved.id}`);
+    return saved;
   }
 
   async findAll(): Promise<MeterReading[]> {
     return this.meterReadingRepository.find({ relations: ['departmentMeter'] });
   }
 
-  async findOne(id: number): Promise<MeterReading> {
+  async findOne(id: string): Promise<MeterReading> {
     const meterReading = await this.meterReadingRepository.findOne({
       where: { id },
       relations: ['departmentMeter'],
@@ -54,7 +81,7 @@ export class MeterReadingService {
   }
 
   async update(
-    id: number,
+    id: string,
     updateMeterReadingDto: UpdateMeterReadingDto,
   ): Promise<MeterReading> {
     const meterReading = await this.findOne(id);
@@ -75,7 +102,7 @@ export class MeterReadingService {
     return this.meterReadingRepository.save(meterReading);
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: string): Promise<void> {
     const meterReading = await this.findOne(id);
     await this.meterReadingRepository.remove(meterReading);
   }

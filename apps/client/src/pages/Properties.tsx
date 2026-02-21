@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, Building2, MapPin, Trash2 } from 'lucide-react';
 import { apiFetch, apiPost } from '../lib/api';
+import { inputCls, labelCls, btnPrimaryCls, btnSecondaryCls, btnDangerCls } from '../lib/styles';
 import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 
 interface Property {
-  id: number;
+  id: string;
   name: string;
   address: string;
 }
@@ -27,7 +28,7 @@ export default function Properties() {
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    apiFetch<Property[]>('/property')
+    apiFetch<Property[]>('/properties')
       .then(setProperties)
       .catch(() => setError('No se pudieron cargar las propiedades'))
       .finally(() => setLoading(false));
@@ -38,7 +39,7 @@ export default function Properties() {
     if (!name || !address) return;
     setSubmitting(true);
     try {
-      const added = await apiPost<Property>('/property', {
+      const added = await apiPost<Property>('/properties', {
         name,
         address,
         lightCostPerUnit: Number(lightCostPerUnit),
@@ -61,7 +62,7 @@ export default function Properties() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await apiFetch(`/property/${deleteTarget.id}`, { method: 'DELETE' });
+      await apiFetch(`/properties/${deleteTarget.id}`, { method: 'DELETE' });
       setProperties((prev) => prev.filter((property) => property.id !== deleteTarget.id));
       setDeleteTarget(null);
     } catch {
@@ -84,7 +85,8 @@ export default function Properties() {
       />
 
       {error && (
-        <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="mb-4 px-4 py-3 rounded-xl bg-status-danger-bg border border-status-danger-border text-status-danger-text text-sm flex items-center gap-2">
+          <AlertTriangle size={15} className="flex-shrink-0" />
           {error}
         </div>
       )}
@@ -100,18 +102,18 @@ export default function Properties() {
           {properties.map((p) => (
             <div
               key={p.id}
-              className="bg-white rounded-2xl border border-slate-200 p-5 h-full hover:shadow-md transition-shadow"
+              className="group bg-surface rounded-2xl border border-border p-5 h-full hover:shadow-lg hover:shadow-shadow hover:-translate-y-0.5 transition-all duration-200"
             >
               <div className="flex items-start justify-between gap-3">
                 <Link to={`/properties/${p.id}`} className="block min-w-0 flex-1 hover:no-underline">
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
-                      <Building2 size={20} className="text-blue-600" />
+                    <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center flex-shrink-0 ring-1 ring-blue-100 dark:ring-blue-800/40">
+                      <Building2 size={19} className="text-blue-600 dark:text-blue-400" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-slate-900 truncate">{p.name}</h3>
-                      <div className="flex items-center gap-1 mt-1 text-sm text-slate-500">
-                        <MapPin size={14} />
+                      <h3 className="font-semibold text-on-surface truncate group-hover:text-primary-600 transition-colors">{p.name}</h3>
+                      <div className="flex items-center gap-1.5 mt-1 text-[13px] text-on-surface-muted">
+                        <MapPin size={13} />
                         <span className="truncate">{p.address}</span>
                       </div>
                     </div>
@@ -120,10 +122,10 @@ export default function Properties() {
                 <button
                   type="button"
                   onClick={() => setDeleteTarget(p)}
-                  className="p-2 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors"
+                  className="p-2 rounded-lg text-on-surface-faint hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-all duration-150 opacity-0 group-hover:opacity-100"
                   title="Eliminar propiedad"
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={15} />
                 </button>
               </div>
             </div>
@@ -134,56 +136,52 @@ export default function Properties() {
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Nueva Propiedad">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Nombre</label>
+            <label className={labelCls}>Nombre</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Edificio Central"
               required
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition-all text-sm"
+              className={inputCls}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Direccion</label>
+            <label className={labelCls}>Direccion</label>
             <input
               type="text"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
               placeholder="Av. Principal 123"
               required
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition-all text-sm"
+              className={inputCls}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Costo Luz (por unidad)</label>
+              <label className={labelCls}>Costo Luz (por unidad)</label>
               <input
                 type="number"
                 step="0.01"
                 value={lightCostPerUnit}
                 onChange={(e) => setLightCostPerUnit(e.target.value)}
                 placeholder="0.25"
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition-all text-sm"
+                className={inputCls}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Costo Agua (por unidad)</label>
+              <label className={labelCls}>Costo Agua (por unidad)</label>
               <input
                 type="number"
                 step="0.01"
                 value={waterCostPerUnit}
                 onChange={(e) => setWaterCostPerUnit(e.target.value)}
                 placeholder="0.15"
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition-all text-sm"
+                className={inputCls}
               />
             </div>
           </div>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 text-white text-sm font-medium rounded-xl transition-colors"
-          >
+          <button type="submit" disabled={submitting} className={btnPrimaryCls}>
             {submitting ? 'Guardando...' : 'Guardar Propiedad'}
           </button>
         </form>
@@ -195,10 +193,10 @@ export default function Properties() {
         title="Eliminar Propiedad"
       >
         <div className="space-y-4">
-          <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+          <div className="flex items-start gap-3 rounded-xl border border-status-danger-border bg-status-danger-bg px-4 py-3 text-sm text-red-700 dark:text-red-300">
             <AlertTriangle size={16} className="mt-0.5 shrink-0" />
             <p>
-              Esta acción eliminará la propiedad <strong>{deleteTarget?.name}</strong> y todos sus datos relacionados
+              Esta accion eliminara la propiedad <strong>{deleteTarget?.name}</strong> y todos sus datos relacionados
               (departamentos, contratos, pagos, medidores, lecturas y cargos extra).
             </p>
           </div>
@@ -207,7 +205,7 @@ export default function Properties() {
               type="button"
               onClick={() => setDeleteTarget(null)}
               disabled={deleting}
-              className="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400 transition-colors"
+              className={`flex-1 ${btnSecondaryCls}`}
             >
               Cancelar
             </button>
@@ -215,7 +213,7 @@ export default function Properties() {
               type="button"
               onClick={handleDeleteProperty}
               disabled={deleting}
-              className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white rounded-xl text-sm font-medium transition-colors"
+              className={`flex-1 ${btnDangerCls}`}
             >
               {deleting ? 'Eliminando...' : 'Eliminar'}
             </button>

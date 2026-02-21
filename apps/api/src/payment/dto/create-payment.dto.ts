@@ -5,6 +5,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
 } from 'class-validator';
 import { PaymentType } from '../entities/payment.entity';
 
@@ -25,7 +26,7 @@ export class CreatePaymentDto {
   @IsNotEmpty()
   type: PaymentType;
 
-  @IsNumber()
+  @IsUUID()
   @IsNotEmpty()
-  contractId: number;
+  contractId: string;
 }

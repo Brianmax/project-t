@@ -6,7 +6,7 @@ import { Payment } from '../payment/entities/payment.entity';
 import { ConsumptionService } from '../consumption/consumption.service';
 
 export interface SettlementResult {
-  contractId: number;
+  contractId: string;
   tenantName: string;
   departmentName: string;
   propertyAddress: string;
@@ -31,7 +31,7 @@ export class ContractSettlementService {
   ) {}
 
   async calculateFinalSettlement(
-    contractId: number,
+    contractId: string,
     actualEndDate: Date,
   ): Promise<SettlementResult> {
     const contract = await this.contractRepository.findOne({

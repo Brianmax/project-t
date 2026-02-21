@@ -5,7 +5,11 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });
-  if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body || `Error ${res.status}: ${res.statusText}`);
+  }
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
@@ -14,4 +18,15 @@ export function apiPost<T>(path: string, body: unknown): Promise<T> {
     method: 'POST',
     body: JSON.stringify(body),
   });
+}
+
+export function apiPatch<T>(path: string, body: unknown): Promise<T> {
+  return apiFetch<T>(path, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+export function apiDelete(path: string): Promise<void> {
+  return apiFetch<void>(path, { method: 'DELETE' });
 }

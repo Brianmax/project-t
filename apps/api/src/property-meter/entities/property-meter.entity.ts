@@ -10,8 +10,8 @@ import { MeterType } from '../../department-meter/entities/department-meter.enti
 
 @Entity()
 export class PropertyMeter {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column({ type: 'enum', enum: MeterType })
   meterType: MeterType;
@@ -20,6 +20,6 @@ export class PropertyMeter {
   @JoinColumn({ name: 'property_id' })
   property: Property;
 
-  @Column({ name: 'property_id' })
-  propertyId: number;
+  @Column({ name: 'property_id', type: 'uuid' })
+  propertyId: string;
 }

@@ -40,7 +40,7 @@ export class PaymentService {
     return this.paymentRepository.find({ relations: ['contract'] });
   }
 
-  async findOne(id: number): Promise<Payment> {
+  async findOne(id: string): Promise<Payment> {
     const payment = await this.paymentRepository.findOne({
       where: { id },
       relations: ['contract'],
@@ -52,7 +52,7 @@ export class PaymentService {
   }
 
   async update(
-    id: number,
+    id: string,
     updatePaymentDto: UpdatePaymentDto,
   ): Promise<Payment> {
     const payment = await this.findOne(id);
@@ -73,7 +73,7 @@ export class PaymentService {
     return this.paymentRepository.save(payment);
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: string): Promise<void> {
     const payment = await this.findOne(id);
     await this.paymentRepository.remove(payment);
   }

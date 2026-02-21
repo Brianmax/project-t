@@ -19,15 +19,15 @@ export enum ReceiptStatus {
 @Entity()
 @Unique('uq_receipt_contract_period', ['contractId', 'month', 'year'])
 export class ReceiptEntity {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @ManyToOne(() => Contract, (contract) => contract.id, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'contract_id' })
   contract: Contract;
 
-  @Column({ name: 'contract_id' })
-  contractId: number;
+  @Column({ name: 'contract_id', type: 'uuid' })
+  contractId: string;
 
   @Column({ type: 'int' })
   month: number;

@@ -6,13 +6,14 @@ import {
   Patch,
   Param,
   Delete,
-  ParseIntPipe,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { PropertyService } from './property.service';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 
-@Controller('property')
+@Controller('properties')
 export class PropertyController {
   constructor(private readonly propertyService: PropertyService) {}
 
@@ -28,16 +29,16 @@ export class PropertyController {
 
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.propertyService.findOne(+id);
+    return this.propertyService.findOne(id);
   }
 
   @Get(':id/tenants')
-  findTenantsByProperty(@Param('id', ParseIntPipe) id: number) {
+  findTenantsByProperty(@Param('id') id: string) {
     return this.propertyService.findTenantsByProperty(id);
   }
 
   @Get(':id/departments')
-  findDepartmentsByProperty(@Param('id', ParseIntPipe) id: number) {
+  findDepartmentsByProperty(@Param('id') id: string) {
     return this.propertyService.findDepartmentsByProperty(id);
   }
 
@@ -46,11 +47,12 @@ export class PropertyController {
     @Param('id') id: string,
     @Body() updatePropertyDto: UpdatePropertyDto,
   ) {
-    return this.propertyService.update(+id, updatePropertyDto);
+    return this.propertyService.update(id, updatePropertyDto);
   }
 
   @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
-    return this.propertyService.remove(+id);
+    return this.propertyService.remove(id);
   }
 }

@@ -6,11 +6,13 @@ import {
   Param,
   Delete,
   Query,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { ExtraChargeService } from './extra-charge.service';
 import { CreateExtraChargeDto } from './dto/create-extra-charge.dto';
 
-@Controller('extra-charge')
+@Controller('extra-charges')
 export class ExtraChargeController {
   constructor(private readonly extraChargeService: ExtraChargeService) {}
 
@@ -26,7 +28,7 @@ export class ExtraChargeController {
     @Query('year') year?: string,
   ) {
     return this.extraChargeService.findAll(
-      contractId ? +contractId : undefined,
+      contractId ? contractId : undefined,
       month ? +month : undefined,
       year ? +year : undefined,
     );
@@ -34,11 +36,12 @@ export class ExtraChargeController {
 
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.extraChargeService.findOne(+id);
+    return this.extraChargeService.findOne(id);
   }
 
   @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
-    return this.extraChargeService.remove(+id);
+    return this.extraChargeService.remove(id);
   }
 }

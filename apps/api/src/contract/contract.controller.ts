@@ -8,6 +8,8 @@ import {
   Delete,
   Query,
   ParseIntPipe,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { ContractService } from './contract.service';
 import { CreateContractDto } from './dto/create-contract.dto';
@@ -19,7 +21,7 @@ import {
   SettlementResult,
 } from '../contract-settlement/contract-settlement.service';
 
-@Controller('contract')
+@Controller('contracts')
 export class ContractController {
   constructor(
     private readonly contractService: ContractService,
@@ -27,19 +29,24 @@ export class ContractController {
     private readonly contractSettlementService: ContractSettlementService,
   ) {}
 
+  @Get('receipts/pending')
+  findPendingReceipts(): Promise<Receipt[]> {
+    return this.receiptService.findPendingReceipts();
+  }
+
   @Post()
   create(@Body() createContractDto: CreateContractDto) {
     return this.contractService.create(createContractDto);
   }
 
   @Get()
-  findAll() {
-    return this.contractService.findAll();
+  findAll(@Query('departmentId') departmentId?: string) {
+    return this.contractService.findAll(departmentId);
   }
 
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.contractService.findOne(+id);
+    return this.contractService.findOne(id);
   }
 
   @Patch(':id')
@@ -47,35 +54,36 @@ export class ContractController {
     @Param('id') id: string,
     @Body() updateContractDto: UpdateContractDto,
   ) {
-    return this.contractService.update(+id, updateContractDto);
+    return this.contractService.update(id, updateContractDto);
   }
 
   @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
-    return this.contractService.remove(+id);
+    return this.contractService.remove(id);
   }
 
-  @Get(':id/receipt')
+  @Get(':id/receipts')
   previewReceipt(
-    @Param('id', ParseIntPipe) contractId: number,
+    @Param('id') contractId: string,
     @Query('month', ParseIntPipe) month: number,
     @Query('year', ParseIntPipe) year: number,
   ): Promise<Receipt> {
     return this.receiptService.previewReceipt(contractId, month, year);
   }
 
-  @Post(':id/receipt')
+  @Post(':id/receipts')
   issueReceipt(
-    @Param('id', ParseIntPipe) contractId: number,
+    @Param('id') contractId: string,
     @Query('month', ParseIntPipe) month: number,
     @Query('year', ParseIntPipe) year: number,
   ): Promise<Receipt> {
     return this.receiptService.issueReceipt(contractId, month, year);
   }
 
-  @Patch(':id/receipt/status')
+  @Patch(':id/receipts/status')
   updateReceiptStatus(
-    @Param('id', ParseIntPipe) contractId: number,
+    @Param('id') contractId: string,
     @Query('month', ParseIntPipe) month: number,
     @Query('year', ParseIntPipe) year: number,
     @Body() updateReceiptStatusDto: UpdateReceiptStatusDto,
@@ -90,7 +98,7 @@ export class ContractController {
 
   @Get(':id/settlement')
   calculateSettlement(
-    @Param('id', ParseIntPipe) contractId: number,
+    @Param('id') contractId: string,
     @Query('actualEndDate') actualEndDate: string,
   ): Promise<SettlementResult> {
     return this.contractSettlementService.calculateFinalSettlement(

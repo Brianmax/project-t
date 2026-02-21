@@ -36,11 +36,11 @@ export class ExtraChargeService {
   }
 
   async findAll(
-    contractId?: number,
+    contractId?: string,
     month?: number,
     year?: number,
   ): Promise<ExtraCharge[]> {
-    const where: Record<string, number> = {};
+    const where: Record<string, string | number> = {};
     if (contractId) where.contractId = contractId;
     if (month) where.month = month;
     if (year) where.year = year;
@@ -52,7 +52,7 @@ export class ExtraChargeService {
   }
 
   async findByContractAndPeriod(
-    contractId: number,
+    contractId: string,
     month: number,
     year: number,
   ): Promise<ExtraCharge[]> {
@@ -62,7 +62,7 @@ export class ExtraChargeService {
     });
   }
 
-  async findOne(id: number): Promise<ExtraCharge> {
+  async findOne(id: string): Promise<ExtraCharge> {
     const extraCharge = await this.extraChargeRepository.findOne({
       where: { id },
       relations: ['contract'],
@@ -73,7 +73,7 @@ export class ExtraChargeService {
     return extraCharge;
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: string): Promise<void> {
     const extraCharge = await this.findOne(id);
     await this.extraChargeRepository.remove(extraCharge);
   }

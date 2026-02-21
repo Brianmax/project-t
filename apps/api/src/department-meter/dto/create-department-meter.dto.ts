@@ -1,4 +1,4 @@
-import { IsEnum, IsNotEmpty, IsNumber } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsUUID } from 'class-validator';
 import { MeterType } from '../entities/department-meter.entity';
 
 export class CreateDepartmentMeterDto {
@@ -6,7 +6,7 @@ export class CreateDepartmentMeterDto {
   @IsNotEmpty()
   meterType: MeterType;
 
-  @IsNumber()
+  @IsUUID()
   @IsNotEmpty()
-  departmentId: number;
+  departmentId: string;
 }

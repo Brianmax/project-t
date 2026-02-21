@@ -10,7 +10,8 @@ import {
     DollarSign,
     CreditCard,
     Building2,
-    Clock
+    Clock,
+    AlertCircle
 } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import Spinner from '../components/Spinner';
@@ -19,27 +20,27 @@ import EmptyState from '../components/EmptyState';
 // ── Types ──────────────────────────────────────────────
 
 interface Tenant {
-    id: number;
+    id: string;
     name: string;
     email: string;
     phone?: string;
 }
 
 interface Contract {
-    id: number;
+    id: string;
     startDate: string;
     endDate: string;
     rentAmount: number;
     guaranteeDeposit: number;
     tenant?: {
-        id: number;
+        id: string;
         name: string;
     };
     department?: {
-        id: number;
+        id: string;
         name: string;
         property?: {
-            id: number;
+            id: string;
             name: string;
             address: string;
         };
@@ -47,46 +48,62 @@ interface Contract {
 }
 
 interface Payment {
-    id: number;
+    id: string;
     amount: number;
     date: string;
     type: string;
-    contract?: { id: number };
+    contract?: { id: string };
+}
+
+interface PendingReceipt {
+    id: string;
+    contractId: string;
+    month: number;
+    year: number;
+    status: 'pending_review' | 'approved' | 'denied';
+    tenantName: string;
+    departmentName: string;
+    propertyAddress: string;
+    period: string;
+    totalDue: number;
+    totalPayments: number;
+    balance: number;
 }
 
 // ── Component ──────────────────────────────────────────
 
 export default function TenantDashboard() {
     const { id } = useParams<{ id: string }>();
-    const tenantId = Number(id);
+    const tenantId = id!;
 
     const [tenant, setTenant] = useState<Tenant | null>(null);
     const [contracts, setContracts] = useState<Contract[]>([]);
     const [payments, setPayments] = useState<Payment[]>([]);
+    const [pendingReceipts, setPendingReceipts] = useState<PendingReceipt[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         Promise.all([
-            apiFetch<Tenant>(`/tenant/${tenantId}`),
-            apiFetch<Contract[]>(`/contract`), // We'll filter client-side for now as we don't have a specific endpoint
-            apiFetch<Payment[]>(`/payment`),   // We'll filter client-side
+            apiFetch<Tenant>(`/tenants/${tenantId}`),
+            apiFetch<Contract[]>(`/contracts`),
+            apiFetch<Payment[]>(`/payments`),
+            apiFetch<PendingReceipt[]>(`/contracts/receipts/pending`),
         ])
-            .then(([t, allContracts, allPayments]) => {
+            .then(([t, allContracts, allPayments, allPendingReceipts]) => {
                 setTenant(t);
 
-                // Filter contracts for this tenant
                 const tenantContracts = allContracts.filter(c => c.tenant?.id === tenantId);
-                // Sort by date desc
                 tenantContracts.sort((a, b) => b.endDate.localeCompare(a.endDate));
                 setContracts(tenantContracts);
 
-                // Filter payments for these contracts
                 const contractIds = new Set(tenantContracts.map(c => c.id));
                 const tenantPayments = allPayments.filter(p => p.contract && contractIds.has(p.contract.id));
-                // Sort by date desc
                 tenantPayments.sort((a, b) => b.date.localeCompare(a.date));
                 setPayments(tenantPayments);
+
+                const tenantReceipts = allPendingReceipts.filter(r => contractIds.has(r.contractId));
+                setPendingReceipts(tenantReceipts);
             })
             .catch((err) => {
                 console.error(err);
@@ -120,20 +137,20 @@ export default function TenantDashboard() {
             <div className="flex items-center gap-4 mb-6">
                 <Link
                     to={activeContract?.department?.property ? `/properties/${activeContract.department.property.id}` : "/tenants"}
-                    className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 transition-colors flex-shrink-0"
+                    className="w-10 h-10 rounded-xl bg-surface-raised flex items-center justify-center text-on-surface-medium hover:bg-surface-raised hover:text-on-surface-strong transition-all duration-150 flex-shrink-0"
                 >
-                    <ArrowLeft size={20} />
+                    <ArrowLeft size={19} />
                 </Link>
                 <div className="min-w-0">
-                    <h1 className="text-2xl font-bold text-slate-900 truncate">{tenant.name}</h1>
-                    <div className="flex items-center gap-4 text-sm text-slate-500 mt-0.5">
+                    <h1 className="text-2xl font-bold text-on-surface truncate tracking-tight">{tenant.name}</h1>
+                    <div className="flex items-center gap-4 text-[13px] text-on-surface-muted mt-0.5">
                         <div className="flex items-center gap-1.5">
-                            <Mail size={14} />
+                            <Mail size={13} />
                             {tenant.email}
                         </div>
                         {tenant.phone && (
                             <div className="flex items-center gap-1.5">
-                                <Phone size={14} />
+                                <Phone size={13} />
                                 {tenant.phone}
                             </div>
                         )}
@@ -142,7 +159,7 @@ export default function TenantDashboard() {
             </div>
 
             {error && (
-                <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+                <div className="mb-4 px-4 py-3 rounded-xl bg-status-danger-bg border border-status-danger-border text-status-danger-text text-sm">
                     {error}
                 </div>
             )}
@@ -154,73 +171,137 @@ export default function TenantDashboard() {
 
                     {/* Active Contract */}
                     <section>
-                        <h2 className="text-lg font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                            <Building2 size={20} className="text-primary-600" />
+                        <h2 className="text-lg font-semibold text-on-surface-strong mb-3 flex items-center gap-2">
+                            <Building2 size={19} className="text-primary-600" />
                             Contrato Actual
                         </h2>
                         {activeContract ? (
-                            <div className="bg-white rounded-2xl border border-primary-100 shadow-sm p-6 relative overflow-hidden">
+                            <div className="bg-surface rounded-2xl border border-primary-100/80 shadow-sm p-6 relative overflow-hidden">
                                 <div className="absolute top-0 right-0 p-4">
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
-                                        <Clock size={12} /> Activo
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold ring-1 ring-emerald-200/50 dark:ring-emerald-700/40">
+                                        <Clock size={11} /> Activo
                                     </span>
                                 </div>
 
                                 <div className="mb-4">
-                                    <h3 className="text-xl font-bold text-slate-900">{activeContract.department?.name || 'Departamento'}</h3>
-                                    <p className="text-slate-500 text-sm">{activeContract.department?.property?.name} - {activeContract.department?.property?.address}</p>
+                                    <h3 className="text-xl font-bold text-on-surface tracking-tight">{activeContract.department?.name || 'Departamento'}</h3>
+                                    <p className="text-on-surface-muted text-[13px]">{activeContract.department?.property?.name} - {activeContract.department?.property?.address}</p>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4 text-sm">
-                                    <div className="p-3 rounded-xl bg-slate-50">
-                                        <p className="text-slate-500 text-xs mb-1">Periodo</p>
-                                        <div className="font-medium text-slate-900 flex items-center gap-2">
-                                            <Calendar size={14} className="text-slate-400" />
+                                <div className="grid grid-cols-2 gap-3 text-sm">
+                                    <div className="p-3 rounded-xl bg-surface-alt/80 ring-1 ring-border-ring">
+                                        <p className="text-on-surface-muted text-[11px] mb-1 uppercase tracking-wider font-medium">Periodo</p>
+                                        <div className="font-medium text-on-surface flex items-center gap-2">
+                                            <Calendar size={13} className="text-on-surface-faint" />
                                             {formatDate(activeContract.startDate)} - {formatDate(activeContract.endDate)}
                                         </div>
                                     </div>
-                                    <div className="p-3 rounded-xl bg-slate-50">
-                                        <p className="text-slate-500 text-xs mb-1">Renta Mensual</p>
-                                        <div className="font-medium text-slate-900 flex items-center gap-2">
-                                            <DollarSign size={14} className="text-slate-400" />
+                                    <div className="p-3 rounded-xl bg-surface-alt/80 ring-1 ring-border-ring">
+                                        <p className="text-on-surface-muted text-[11px] mb-1 uppercase tracking-wider font-medium">Renta Mensual</p>
+                                        <div className="font-medium text-on-surface flex items-center gap-2">
+                                            <DollarSign size={13} className="text-on-surface-faint" />
                                             S/ {Number(activeContract.rentAmount).toFixed(2)}
                                         </div>
                                     </div>
-                                    <div className="p-3 rounded-xl bg-slate-50">
-                                        <p className="text-slate-500 text-xs mb-1">Garantía</p>
-                                        <div className="font-medium text-slate-900 flex items-center gap-2">
-                                            <DollarSign size={14} className="text-slate-400" />
+                                    <div className="p-3 rounded-xl bg-surface-alt/80 ring-1 ring-border-ring">
+                                        <p className="text-on-surface-muted text-[11px] mb-1 uppercase tracking-wider font-medium">Garantia</p>
+                                        <div className="font-medium text-on-surface flex items-center gap-2">
+                                            <DollarSign size={13} className="text-on-surface-faint" />
                                             S/ {Number(activeContract.guaranteeDeposit).toFixed(2)}
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         ) : (
-                            <div className="bg-slate-50 rounded-2xl border border-slate-200 p-6 text-center">
-                                <p className="text-slate-500">Este inquilino no tiene un contrato activo actualmente.</p>
+                            <div className="bg-surface-alt rounded-2xl border border-border p-6 text-center">
+                                <p className="text-on-surface-muted text-sm">Este inquilino no tiene un contrato activo actualmente.</p>
                             </div>
                         )}
                     </section>
 
+                    {/* Pending Receipts */}
+                    {pendingReceipts.length > 0 && (
+                        <section>
+                            <h2 className="text-lg font-semibold text-on-surface-strong mb-3 flex items-center gap-2">
+                                <AlertCircle size={19} className="text-amber-600 dark:text-amber-400" />
+                                Recibos Pendientes de Pago
+                            </h2>
+                            <div className="space-y-3">
+                                {pendingReceipts.map((receipt) => (
+                                    <div
+                                        key={receipt.id}
+                                        className="bg-surface rounded-xl border border-amber-200/80 dark:border-amber-700/40 p-4 shadow-sm hover:shadow-md transition-all duration-200"
+                                    >
+                                        <div className="flex justify-between items-start mb-3">
+                                            <div>
+                                                <h3 className="font-semibold text-on-surface mb-1">{receipt.period}</h3>
+                                                <p className="text-sm text-on-surface-medium">
+                                                    {receipt.departmentName}
+                                                </p>
+                                            </div>
+                                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200/50 dark:ring-amber-700/40">
+                                                Pendiente
+                                            </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-3 gap-2 text-sm mb-3">
+                                            <div className="bg-surface-alt/80 rounded-lg p-2 ring-1 ring-border-ring">
+                                                <p className="text-on-surface-muted text-[11px] mb-0.5">Total</p>
+                                                <p className="font-medium text-on-surface">S/ {receipt.totalDue.toFixed(2)}</p>
+                                            </div>
+                                            <div className="bg-surface-alt/80 rounded-lg p-2 ring-1 ring-border-ring">
+                                                <p className="text-on-surface-muted text-[11px] mb-0.5">Pagado</p>
+                                                <p className="font-medium text-emerald-600 dark:text-emerald-400">S/ {receipt.totalPayments.toFixed(2)}</p>
+                                            </div>
+                                            <div className="bg-red-50 dark:bg-red-950/40 rounded-lg p-2 ring-1 ring-red-200/50 dark:ring-red-700/40">
+                                                <p className="text-red-700 dark:text-red-300 text-[11px] mb-0.5">Debe</p>
+                                                <p className="font-bold text-red-600 dark:text-red-400">S/ {Math.abs(receipt.balance).toFixed(2)}</p>
+                                            </div>
+                                        </div>
+
+                                        <Link
+                                            to={`/departments/${receipt.contractId}/billing`}
+                                            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors"
+                                        >
+                                            Ver detalles y pagar
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                            </svg>
+                                        </Link>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="mt-3 p-4 bg-red-50 dark:bg-red-950/30 rounded-xl border border-red-200/60 dark:border-red-700/40">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm font-semibold text-on-surface">Total Adeudado:</span>
+                                    <span className="text-xl font-bold text-red-600 dark:text-red-400">
+                                        S/ {pendingReceipts.reduce((sum, r) => sum + Math.abs(r.balance), 0).toFixed(2)}
+                                    </span>
+                                </div>
+                            </div>
+                        </section>
+                    )}
+
                     {/* Contract History */}
                     {pastContracts.length > 0 && (
                         <section>
-                            <h2 className="text-lg font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                                <FileText size={20} className="text-slate-400" />
+                            <h2 className="text-lg font-semibold text-on-surface-strong mb-3 flex items-center gap-2">
+                                <FileText size={19} className="text-on-surface-faint" />
                                 Historial de Contratos
                             </h2>
                             <div className="space-y-3">
                                 {pastContracts.map(c => (
-                                    <div key={c.id} className="bg-white rounded-xl border border-slate-200 p-4 opacity-75 hover:opacity-100 transition-opacity">
+                                    <div key={c.id} className="bg-surface rounded-xl border border-border p-4 opacity-75 hover:opacity-100 transition-all duration-200">
                                         <div className="flex justify-between items-start mb-2">
                                             <div>
-                                                <h4 className="font-medium text-slate-900">{c.department?.name}</h4>
-                                                <p className="text-xs text-slate-500">{c.department?.property?.name}</p>
+                                                <h4 className="font-medium text-on-surface">{c.department?.name}</h4>
+                                                <p className="text-xs text-on-surface-muted">{c.department?.property?.name}</p>
                                             </div>
-                                            <span className="text-xs px-2 py-1 bg-slate-100 text-slate-600 rounded-lg">Finalizado</span>
+                                            <span className="text-[11px] px-2 py-1 bg-surface-raised text-on-surface-medium rounded-lg font-medium">Finalizado</span>
                                         </div>
-                                        <div className="text-sm text-slate-600 flex gap-4">
-                                            <span className="flex items-center gap-1.5"><Calendar size={14} /> {formatDate(c.startDate)} - {formatDate(c.endDate)}</span>
+                                        <div className="text-sm text-on-surface-medium flex gap-4">
+                                            <span className="flex items-center gap-1.5"><Calendar size={13} /> {formatDate(c.startDate)} - {formatDate(c.endDate)}</span>
                                         </div>
                                     </div>
                                 ))}
@@ -233,30 +314,30 @@ export default function TenantDashboard() {
                 {/* Sidebar: Payments */}
                 <div className="space-y-6">
                     <section>
-                        <h2 className="text-lg font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                            <CreditCard size={20} className="text-blue-600" />
+                        <h2 className="text-lg font-semibold text-on-surface-strong mb-3 flex items-center gap-2">
+                            <CreditCard size={19} className="text-blue-600 dark:text-blue-400" />
                             Ultimos Pagos
                         </h2>
 
                         {payments.length === 0 ? (
-                            <p className="text-sm text-slate-500 italic">No hay pagos registrados.</p>
+                            <p className="text-sm text-on-surface-muted italic">No hay pagos registrados.</p>
                         ) : (
-                            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-                                <div className="divide-y divide-slate-100">
+                            <div className="bg-surface rounded-2xl border border-border overflow-hidden shadow-sm">
+                                <div className="divide-y divide-border-light">
                                     {payments.map(p => (
-                                        <div key={p.id} className="p-4 hover:bg-slate-50 transition-colors">
-                                            <div className="flex justify-between items-start mb-1">
-                                                <span className="font-medium text-slate-900">S/ {Number(p.amount).toFixed(2)}</span>
-                                                <span className="text-xs text-slate-500">{formatDate(p.date)}</span>
+                                        <div key={p.id} className="p-4 hover:bg-surface-alt/50 transition-colors">
+                                            <div className="flex justify-between items-start mb-1.5">
+                                                <span className="font-semibold text-on-surface">S/ {Number(p.amount).toFixed(2)}</span>
+                                                <span className="text-[11px] text-on-surface-muted">{formatDate(p.date)}</span>
                                             </div>
                                             <div className="flex justify-between items-center text-xs">
-                                                <span className={`px-2 py-0.5 rounded-md ${p.type === 'rent' ? 'bg-blue-100 text-blue-700' :
-                                                        p.type === 'water' ? 'bg-cyan-100 text-cyan-700' :
-                                                            p.type === 'light' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'
+                                                <span className={`px-2 py-0.5 rounded-md font-medium ${p.type === 'rent' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' :
+                                                        p.type === 'water' ? 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300' :
+                                                            p.type === 'light' ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300' : 'bg-surface-raised text-on-surface-medium'
                                                     }`}>
                                                     {p.type === 'rent' ? 'Alquiler' : p.type === 'water' ? 'Agua' : p.type === 'light' ? 'Luz' : p.type}
                                                 </span>
-                                                <span className="text-slate-400">#{p.contract?.id}</span>
+                                                <span className="text-on-surface-faint font-mono">#{p.contract?.id}</span>
                                             </div>
                                         </div>
                                     ))}

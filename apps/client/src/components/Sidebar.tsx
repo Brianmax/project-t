@@ -12,6 +12,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { useState } from 'react';
+import ThemeToggle from './ThemeToggle';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -29,46 +30,47 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`bg-sidebar text-white flex flex-col transition-all duration-300 ${
+      className={`bg-gradient-to-b from-sidebar to-slate-900 text-white flex flex-col transition-all duration-300 ease-in-out ${
         collapsed ? 'w-[68px]' : 'w-64'
       }`}
     >
-      <div className="flex items-center gap-3 px-4 h-16 border-b border-white/10">
-        <div className="w-8 h-8 rounded-lg bg-primary-500 flex items-center justify-center flex-shrink-0">
+      <div className="flex items-center gap-3 px-4 h-16 border-b border-white/[0.06]">
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20">
           <Building2 size={18} className="text-white" />
         </div>
         {!collapsed && (
-          <span className="text-lg font-bold tracking-tight truncate">
+          <span className="font-display text-[15px] font-bold tracking-tight truncate bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
             PropManager
           </span>
         )}
       </div>
 
-      <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
+      <nav className="flex-1 py-3 px-2.5 space-y-0.5 overflow-y-auto">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.to === '/'}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              `group flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150 ${
                 isActive
-                  ? 'bg-sidebar-active text-white'
-                  : 'text-slate-400 hover:bg-sidebar-hover hover:text-white'
+                  ? 'bg-white/[0.14] text-white shadow-sm shadow-black/10 ring-1 ring-white/[0.08]'
+                  : 'text-slate-400 hover:bg-white/[0.07] hover:text-slate-100 active:bg-white/[0.10]'
               }`
             }
           >
-            <item.icon size={20} className="flex-shrink-0" />
+            <item.icon size={18} className="flex-shrink-0 transition-transform duration-150 group-hover:scale-110" />
             {!collapsed && <span className="truncate">{item.label}</span>}
           </NavLink>
         ))}
       </nav>
 
+      <ThemeToggle collapsed={collapsed} />
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="flex items-center justify-center h-12 border-t border-white/10 text-slate-400 hover:text-white transition-colors"
+        className="flex items-center justify-center h-11 border-t border-white/[0.06] text-slate-500 hover:text-slate-300 hover:bg-white/[0.04] transition-all duration-150"
       >
-        {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+        {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
       </button>
     </aside>
   );

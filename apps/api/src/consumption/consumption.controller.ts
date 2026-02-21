@@ -1,13 +1,13 @@
-import { Controller, Get, Param, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Param } from '@nestjs/common';
 import { ConsumptionService } from './consumption.service';
 
-@Controller('consumption')
+@Controller('departments')
 export class ConsumptionController {
   constructor(private readonly consumptionService: ConsumptionService) {}
 
-  @Get('department/:departmentId')
+  @Get(':id/consumption')
   calculateCurrentConsumption(
-    @Param('departmentId', ParseIntPipe) departmentId: number,
+    @Param('id') departmentId: string,
   ) {
     return this.consumptionService.calculateCurrentConsumption(departmentId);
   }

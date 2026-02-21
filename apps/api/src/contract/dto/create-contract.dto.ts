@@ -1,4 +1,4 @@
-import { IsDateString, IsNotEmpty, IsNumber } from 'class-validator';
+import { IsDateString, IsNotEmpty, IsNumber, IsUUID } from 'class-validator';
 
 export class CreateContractDto {
   @IsDateString()
@@ -21,11 +21,11 @@ export class CreateContractDto {
   @IsNotEmpty()
   guaranteeDeposit: number;
 
-  @IsNumber()
+  @IsUUID()
   @IsNotEmpty()
-  tenantId: number;
+  tenantId: string;
 
-  @IsNumber()
+  @IsUUID()
   @IsNotEmpty()
-  departmentId: number;
+  departmentId: string;
 }

@@ -3,8 +3,8 @@ import { Property } from '../../property/entities/property.entity';
 
 @Entity()
 export class Department {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column()
   name: string;
@@ -18,8 +18,8 @@ export class Department {
   @ManyToOne(() => Property, (property) => property.id)
   property: Property;
 
-  @Column({ name: 'property_id' })
-  propertyId: number;
+  @Column({ name: 'property_id', type: 'uuid' })
+  propertyId: string;
 
   @Column({ default: true })
   isAvailable: boolean;

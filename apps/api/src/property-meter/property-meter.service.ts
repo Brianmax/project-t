@@ -42,7 +42,7 @@ export class PropertyMeterService {
     return this.propertyMeterRepository.find({ relations: ['property'] });
   }
 
-  async findOne(id: number): Promise<PropertyMeter> {
+  async findOne(id: string): Promise<PropertyMeter> {
     const propertyMeter = await this.propertyMeterRepository.findOne({
       where: { id },
       relations: ['property'],
@@ -54,7 +54,7 @@ export class PropertyMeterService {
   }
 
   async update(
-    id: number,
+    id: string,
     updatePropertyMeterDto: UpdatePropertyMeterDto,
   ): Promise<PropertyMeter> {
     const propertyMeter = await this.findOne(id);
@@ -75,7 +75,7 @@ export class PropertyMeterService {
     return this.propertyMeterRepository.save(propertyMeter);
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: string): Promise<void> {
     const propertyMeter = await this.findOne(id);
     await this.propertyMeterRepository.remove(propertyMeter);
   }

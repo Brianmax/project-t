@@ -5,15 +5,17 @@ import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
+import { inputCls, btnPrimaryCls } from '../lib/styles';
+import DatePicker from '../components/DatePicker';
 
 interface DepartmentMeter {
-  id: number;
+  id: string;
   meterType: 'light' | 'water';
-  departmentId: number;
+  departmentId: string;
 }
 
 interface MeterReading {
-  id: number;
+  id: string;
   reading: number;
   date: string;
   departmentMeter: DepartmentMeter;
@@ -33,8 +35,8 @@ export default function MeterReadings() {
 
   useEffect(() => {
     Promise.all([
-      apiFetch<MeterReading[]>('/meter-reading'),
-      apiFetch<DepartmentMeter[]>('/department-meter'),
+      apiFetch<MeterReading[]>('/meter-readings'),
+      apiFetch<DepartmentMeter[]>('/department-meters'),
     ])
       .then(([r, m]) => {
         setReadings(r);
@@ -49,10 +51,10 @@ export default function MeterReadings() {
     if (!value || !date || !meterId) return;
     setSubmitting(true);
     try {
-      const added = await apiPost<MeterReading>('/meter-reading', {
+      const added = await apiPost<MeterReading>('/meter-readings', {
         reading: Number(value),
         date,
-        departmentMeterId: Number(meterId),
+        departmentMeterId: meterId,
       });
       setReadings((prev) => [...prev, added]);
       setValue('');
@@ -68,8 +70,6 @@ export default function MeterReadings() {
 
   if (loading) return <Spinner />;
 
-  const inputCls = "w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition-all text-sm";
-
   return (
     <div className="animate-fade-in">
       <PageHeader
@@ -81,7 +81,7 @@ export default function MeterReadings() {
       />
 
       {error && (
-        <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="mb-4 px-4 py-3 rounded-xl bg-status-danger-bg border border-status-danger-border text-status-danger-text text-sm">
           {error}
         </div>
       )}
@@ -89,20 +89,20 @@ export default function MeterReadings() {
       {readings.length === 0 ? (
         <EmptyState icon={Activity} title="Sin lecturas" description="Registra lecturas de medidor para hacer seguimiento al consumo." />
       ) : (
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div className="bg-surface rounded-2xl border border-border overflow-hidden shadow-sm">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="text-left px-5 py-3 font-medium text-slate-600">ID</th>
-                <th className="text-left px-5 py-3 font-medium text-slate-600">Medidor</th>
-                <th className="text-left px-5 py-3 font-medium text-slate-600">Valor</th>
-                <th className="text-left px-5 py-3 font-medium text-slate-600">Fecha</th>
+              <tr className="border-b border-border-light bg-surface-alt/80">
+                <th className="text-left px-5 py-3 text-[13px] font-semibold text-on-surface-medium uppercase tracking-wider">ID</th>
+                <th className="text-left px-5 py-3 text-[13px] font-semibold text-on-surface-medium uppercase tracking-wider">Medidor</th>
+                <th className="text-left px-5 py-3 text-[13px] font-semibold text-on-surface-medium uppercase tracking-wider">Valor</th>
+                <th className="text-left px-5 py-3 text-[13px] font-semibold text-on-surface-medium uppercase tracking-wider">Fecha</th>
               </tr>
             </thead>
             <tbody>
               {readings.map((r) => (
-                <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
-                  <td className="px-5 py-3.5 font-mono text-slate-500">#{r.id}</td>
+                <tr key={r.id} className="border-b border-border-light last:border-0 hover:bg-surface-alt/50 transition-colors">
+                  <td className="px-5 py-3.5 font-mono text-on-surface-muted">#{r.id}</td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-2">
                       {r.departmentMeter?.meterType === 'water' ? (
@@ -110,14 +110,14 @@ export default function MeterReadings() {
                       ) : (
                         <Zap size={16} className="text-amber-500" />
                       )}
-                      <span className="text-slate-600">
+                      <span className="text-on-surface-medium">
                         Medidor #{r.departmentMeter?.id || 'N/A'} -{' '}
                         <span className="capitalize">{r.departmentMeter?.meterType === 'water' ? 'Agua' : 'Luz'}</span>
                       </span>
                     </div>
                   </td>
-                  <td className="px-5 py-3.5 font-semibold text-slate-900">{r.reading}</td>
-                  <td className="px-5 py-3.5 text-slate-600">
+                  <td className="px-5 py-3.5 font-semibold text-on-surface">{r.reading}</td>
+                  <td className="px-5 py-3.5 text-on-surface-medium">
                     {new Date(r.date).toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' })}
                   </td>
                 </tr>
@@ -130,7 +130,7 @@ export default function MeterReadings() {
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Nueva Lectura">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Medidor</label>
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Medidor</label>
             <select value={meterId} onChange={(e) => setMeterId(e.target.value)} required className={inputCls}>
               <option value="">Seleccionar medidor...</option>
               {meters.map((m) => (
@@ -141,14 +141,14 @@ export default function MeterReadings() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Valor de Lectura</label>
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Valor de Lectura</label>
             <input type="number" step="0.01" value={value} onChange={(e) => setValue(e.target.value)} placeholder="12345.67" required className={inputCls} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Fecha</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className={inputCls} />
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Fecha</label>
+            <DatePicker value={date} onChange={setDate} required />
           </div>
-          <button type="submit" disabled={submitting} className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 text-white text-sm font-medium rounded-xl transition-colors">
+          <button type="submit" disabled={submitting} className={btnPrimaryCls}>
             {submitting ? 'Guardando...' : 'Guardar Lectura'}
           </button>
         </form>
