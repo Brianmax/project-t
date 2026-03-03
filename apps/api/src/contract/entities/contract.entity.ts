@@ -2,6 +2,11 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
 import { Tenant } from '../../tenant/entities/tenant.entity';
 import { Department } from '../../department/entities/department.entity';
 
+export enum ContractStatus {
+  ACTIVE = 'active',
+  TERMINATED = 'terminated',
+}
+
 @Entity()
 export class Contract {
   @PrimaryGeneratedColumn('uuid')
@@ -33,4 +38,7 @@ export class Contract {
 
   @Column({ name: 'department_id', type: 'uuid' })
   departmentId: string; // Foreign key for Department
+
+  @Column({ type: 'enum', enum: ContractStatus, default: ContractStatus.ACTIVE })
+  status: ContractStatus;
 }

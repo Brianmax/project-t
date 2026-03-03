@@ -245,7 +245,7 @@ export default function DepartmentDashboard() {
     setReadingModalType(type);
   };
   const handleBillingClick = () => {
-    navigate(`/departments/${departmentId}/billing?autogenerate=1`);
+    navigate(`/departments/${departmentId}/billing`);
   };
   const meterTypeById = useMemo(
     () => new Map(meters.map((m) => [m.id, m.meterType])),

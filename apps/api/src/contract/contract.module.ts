@@ -7,12 +7,14 @@ import { Tenant } from '../tenant/entities/tenant.entity';
 import { Department } from '../department/entities/department.entity';
 import { ReceiptModule } from '../receipt/receipt.module';
 import { ContractSettlementModule } from '../contract-settlement/contract-settlement.module';
+import { ContractTerminationModule } from '../contract-termination/contract-termination.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Contract, Tenant, Department]),
     ReceiptModule,
     ContractSettlementModule,
+    ContractTerminationModule,
   ],
   controllers: [ContractController],
   providers: [ContractService],

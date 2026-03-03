@@ -18,6 +18,8 @@ interface MeterReading {
   id: string;
   reading: number;
   date: string;
+  billingMonth: number | null;
+  billingYear: number | null;
   departmentMeter: DepartmentMeter;
 }
 
@@ -32,6 +34,10 @@ export default function MeterReadings() {
   const [date, setDate] = useState('');
   const [meterId, setMeterId] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  const now = new Date();
+  const [billingMonth, setBillingMonth] = useState(now.getMonth() + 1);
+  const [billingYear, setBillingYear] = useState(now.getFullYear());
 
   useEffect(() => {
     Promise.all([
@@ -55,11 +61,15 @@ export default function MeterReadings() {
         reading: Number(value),
         date,
         departmentMeterId: meterId,
+        billingMonth,
+        billingYear,
       });
       setReadings((prev) => [...prev, added]);
       setValue('');
       setDate('');
       setMeterId('');
+      setBillingMonth(new Date().getMonth() + 1);
+      setBillingYear(new Date().getFullYear());
       setModalOpen(false);
     } catch {
       setError('Error al agregar lectura');
@@ -97,6 +107,7 @@ export default function MeterReadings() {
                 <th className="text-left px-5 py-3 text-[13px] font-semibold text-on-surface-medium uppercase tracking-wider">Medidor</th>
                 <th className="text-left px-5 py-3 text-[13px] font-semibold text-on-surface-medium uppercase tracking-wider">Valor</th>
                 <th className="text-left px-5 py-3 text-[13px] font-semibold text-on-surface-medium uppercase tracking-wider">Fecha</th>
+                <th className="text-left px-5 py-3 text-[13px] font-semibold text-on-surface-medium uppercase tracking-wider">Período</th>
               </tr>
             </thead>
             <tbody>
@@ -119,6 +130,9 @@ export default function MeterReadings() {
                   <td className="px-5 py-3.5 font-semibold text-on-surface">{r.reading}</td>
                   <td className="px-5 py-3.5 text-on-surface-medium">
                     {new Date(r.date).toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </td>
+                  <td className="px-5 py-3.5 text-on-surface-medium">
+                    {r.billingMonth != null && r.billingYear != null ? `${r.billingMonth}/${r.billingYear}` : '—'}
                   </td>
                 </tr>
               ))}
@@ -147,6 +161,20 @@ export default function MeterReadings() {
           <div>
             <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Fecha</label>
             <DatePicker value={date} onChange={setDate} required />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Mes de Facturación</label>
+              <select value={billingMonth} onChange={(e) => setBillingMonth(Number(e.target.value))} required className={inputCls}>
+                {['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'].map((name, i) => (
+                  <option key={i + 1} value={i + 1}>{name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Año de Facturación</label>
+              <input type="number" value={billingYear} onChange={(e) => setBillingYear(Number(e.target.value))} required className={inputCls} min={2000} max={2100} />
+            </div>
           </div>
           <button type="submit" disabled={submitting} className={btnPrimaryCls}>
             {submitting ? 'Guardando...' : 'Guardar Lectura'}

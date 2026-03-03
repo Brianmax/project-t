@@ -56,9 +56,25 @@ export class MeterReadingService {
       this.logger.log(`No previous reading found for meter ${departmentMeterId}`);
     }
 
+    const readingDate = new Date(createMeterReadingDto.date + 'T12:00:00');
+    const derivedBillingPeriod = (date: Date): { month: number; year: number } => {
+      if (date.getDate() === 1) {
+        const m = date.getMonth(); // 0-indexed, so already the previous month's 1-indexed value
+        return m === 0
+          ? { month: 12, year: date.getFullYear() - 1 }
+          : { month: m, year: date.getFullYear() };
+      }
+      return { month: date.getMonth() + 1, year: date.getFullYear() };
+    };
+    const derived = derivedBillingPeriod(readingDate);
+    const billingMonth = createMeterReadingDto.billingMonth ?? derived.month;
+    const billingYear = createMeterReadingDto.billingYear ?? derived.year;
+
     const meterReading = this.meterReadingRepository.create({
       ...createMeterReadingDto,
       departmentMeter,
+      billingMonth,
+      billingYear,
     });
     const saved = await this.meterReadingRepository.save(meterReading);
     this.logger.log(`Reading saved: id=${saved.id}`);

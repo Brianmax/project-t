@@ -1,0 +1,525 @@
+
+ ▐▛███▜▌   Claude Code v2.1.63
+▝▜█████▛▘  Sonnet 4.6 · Claude Pro
+  ▘▘ ▝▝    ~/project-t/apps/api
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Plan to implement                                                            │
+│                                                                              │
+│ Plan: Partial-Month Receipt for Mid-Month Departures                         │
+│                                                                              │
+│ Context                                                                      │
+│                                                                              │
+│ Tenants sometimes leave mid-month before their contract ends. The current    │
+│ receipt generation                                                           │
+│ always bills a full month's rent. We need to support partial-month billing   │
+│ where rent is                                                                │
+│ prorated for the days the tenant actually occupied the unit. Consumption and │
+│  extra charges                                                               │
+│ remain unchanged (meter-based, not day-based).                               │
+│                                                                              │
+│ ---                                                                          │
+│ Files to Change                                                              │
+│                                                                              │
+│ File: apps/api/src/receipt/entities/receipt.entity.ts                        │
+│ Change: Add nullable startDay / endDay int columns                           │
+│ ────────────────────────────────────────                                     │
+│ File: apps/api/src/contract/contract.controller.ts                           │
+│ Change: Add optional startDay / endDay query params to POST :id/receipts     │
+│ ────────────────────────────────────────                                     │
+│ File: apps/api/src/receipt/receipt.service.ts                                │
+│ Change: Accept startDay/endDay, prorate rent, update period label, expose in │
+│                                                                              │
+│   Receipt interface                                                          │
+│ ────────────────────────────────────────                                     │
+│ File: apps/client/src/pages/DepartmentBilling.tsx                            │
+│ Change: Add optional "Día de salida" input; pass params to API               │
+│                                                                              │
+│ ---                                                                          │
+│ Detailed Steps                                                               │
+│                                                                              │
+│ 1. Entity — receipt.entity.ts                                                │
+│                                                                              │
+│ Add two nullable columns after the year column:                              │
+│                                                                              │
+│ @Column({ type: 'int', nullable: true, default: null })                      │
+│ startDay: number | null;                                                     │
+│                                                                              │
+│ @Column({ type: 'int', nullable: true, default: null })                      │
+│ endDay: number | null;                                                       │
+│                                                                              │
+│ 2. Controller — contract.controller.ts                                       │
+│                                                                              │
+│ Add optional startDay/endDay to POST :id/receipts:                           │
+│                                                                              │
+│ @Post(':id/receipts')                                                        │
+│ issueReceipt(                                                                │
+│   @Param('id') contractId: string,                                           │
+│   @Query('month', ParseIntPipe) month: number,                               │
+│   @Query('year', ParseIntPipe) year: number,                                 │
+│   @Query('startDay', new ParseIntPipe({ optional: true })) startDay?:        │
+│ number,                                                                      │
+│   @Query('endDay', new ParseIntPipe({ optional: true })) endDay?: number,    │
+│ ): Promise<Receipt> {                                                        │
+│   return this.receiptService.issueReceipt(contractId, month, year, startDay, │
+│  endDay);                                                                    │
+│ }                                                                            │
+│                                                                              │
+│ 3. Service — receipt.service.ts                                              │
+│                                                                              │
+│ Receipt interface — add optional fields:                                     │
+│ startDay?: number | null;                                                    │
+│ endDay?: number | null;                                                      │
+│                                                                              │
+│ issueReceipt signature:                                                      │
+│ async issueReceipt(                                                          │
+│   contractId: string,                                                        │
+│   month: number,                                                             │
+│   year: number,                                                              │
+│   startDay?: number,                                                         │
+│   endDay?: number,                                                           │
+│ ): Promise<Receipt>                                                          │
+│                                                                              │
+│ Pass startDay/endDay through to calculateReceipt. When updating an existing  │
+│ receipt,                                                                     │
+│ also update existing.startDay and existing.endDay.                           │
+│                                                                              │
+│ calculateReceipt proration — when endDay is provided:                        │
+│ const effectiveStartDay = startDay ?? 1;                                     │
+│ const daysInMonth = new Date(year, month, 0).getDate();                      │
+│ const daysOccupied = endDay - effectiveStartDay + 1;                         │
+│ const rentAmount = (daysOccupied / daysInMonth) *                            │
+│ Number(contract.rentAmount);                                                 │
+│ // description: `Monthly Rent (${daysOccupied}/${daysInMonth} days)`         │
+│                                                                              │
+│ Period label — use a range when partial:                                     │
+│ const monthName = periodStart.toLocaleString('en-US', { month: 'long', year: │
+│  'numeric' });                                                               │
+│ const period = endDay                                                        │
+│   ? `${effectiveStartDay}–${endDay} ${monthName}`                            │
+│   : monthName;                                                               │
+│                                                                              │
+│ toReceipt — map startDay/endDay from entity.                                 │
+│                                                                              │
+│ 4. Frontend — DepartmentBilling.tsx                                          │
+│                                                                              │
+│ New state:                                                                   │
+│ const [departureDay, setDepartureDay] = useState('');                        │
+│                                                                              │
+│ Reset on period change — add setDepartureDay('') to the existing useEffect   │
+│ that                                                                         │
+│ resets receipt state when month/year changes.                                │
+│                                                                              │
+│ Updated handleGenerateReceipt:                                               │
+│ const params = new URLSearchParams({ month: String(month), year:             │
+│ String(year) });                                                             │
+│ if (departureDay) {                                                          │
+│   params.set('startDay', '1');                                               │
+│   params.set('endDay', departureDay);                                        │
+│ }                                                                            │
+│ const data = await apiFetch<GeneratedReceipt>(                               │
+│   `/contracts/${contract.id}/receipts?${params}`,                            │
+│   { method: 'POST' },                                                        │
+│ );                                                                           │
+│                                                                              │
+│ New UI field — add below the month/year selectors, before the billing        │
+│ summary card.                                                                │
+│ A simple number input (1–31), clearly labeled as optional:                   │
+│                                                                              │
+│ <div className="flex items-center gap-3 mb-6">                               │
+│   <label className="text-[13px] font-medium text-on-surface-medium           │
+│ whitespace-nowrap">                                                          │
+│     Día de salida <span className="text-on-surface-faint">(opcional)</span>  │
+│   </label>                                                                   │
+│   <input                                                                     │
+│     type="number"                                                            │
+│     min={1}                                                                  │
+│     max={31}                                                                 │
+│     value={departureDay}                                                     │
+│     onChange={(e) => setDepartureDay(e.target.value)}                        │
+│     placeholder="ej. 15"                                                     │
+│     className={inputCls + ' max-w-[100px]'}                                  │
+│   />                                                                         │
+│ </div>                                                                       │
+│                                                                              │
+│ ---                                                                          │
+│ Verification                                                                 │
+│                                                                              │
+│ 1. Full month: no departure day → rent unchanged, period = "March 2026"      │
+│ 2. Partial: departure day = 15, month with 31 days → rent = 15/31 ×          │
+│ rentAmount,                                                                  │
+│ period = "1–15 March 2026"                                                   │
+│ 3. Regenerate without departure day → full rent restored                     │
+│ 4. Type checks: cd apps/api && npx tsc --noEmit and npx tsc --noEmit from    │
+│ root                                                                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+⏺ Let me read the relevant files before implementing the changes.
+
+⏺ Searched for 1 pattern, read 4 files (ctrl+o to expand)
+
+⏺ Now I have all the context needed. Let me implement all four changes.
+
+⏺ Step 1: Add startDay/endDay to the receipt entity.
+
+⏺ Update(src/receipt/entities/receipt.entity.ts)
+  ⎿  Added 6 lines
+      35    @Column({ type: 'int' })
+      36    year: number;
+      37  
+      38 +  @Column({ type: 'int', nullable: true, default: null })      
+      39 +  startDay: number | null;                                     
+      40 +                                                               
+      41 +  @Column({ type: 'int', nullable: true, default: null })      
+      42 +  endDay: number | null;                                       
+      43 +                                                               
+      44    @Column({ type: 'varchar', length: 64 })
+      45    tenantName: string;
+      46  
+
+⏺ Step 2: Update the controller.
+
+⏺ Update(src/contract/contract.controller.ts)
+  ⎿  Added 3 lines, removed 1 line
+      77      @Param('id') contractId: string,
+      78      @Query('month', ParseIntPipe) month: number,
+      79      @Query('year', ParseIntPipe) year: number,
+      80 +    @Query('startDay', new ParseIntPipe({ optional: true })) st
+         +artDay?: number,                                               
+      81 +    @Query('endDay', new ParseIntPipe({ optional: true })) endD
+         +ay?: number,                                                   
+      82    ): Promise<Receipt> {
+      81 -    return this.receiptService.issueReceipt(contractId, month, 
+         -year);                                                         
+      83 +    return this.receiptService.issueReceipt(contractId, month, 
+         +year, startDay, endDay);                                       
+      84    }
+      85  
+      86    @Patch(':id/receipts/status')
+
+⏺ Step 3: Update the receipt service.
+
+⏺ Update(src/receipt/receipt.service.ts)
+  ⎿  Added 2 lines
+      18    contractId: string;
+      19    month: number;
+      20    year: number;
+      21 +  startDay?: number | null;                                    
+      22 +  endDay?: number | null;                                      
+      23    status: ReceiptStatus;
+      24    tenantName: string;
+      25    departmentName: string;
+
+⏺ Now update issueReceipt to accept and pass startDay/endDay, and update the
+  existing receipt fields:
+
+⏺ Update(src/receipt/receipt.service.ts)
+  ⎿  Added 7 lines, removed 1 line
+      65      contractId: string,
+      66      month: number,
+      67      year: number,
+      68 +    startDay?: number,                                         
+      69 +    endDay?: number,                                           
+      70    ): Promise<Receipt> {
+      71      // Always recalculate to get the latest extra charges and c
+          onsumption
+      70 -    const calculated = await this.calculateReceipt(contractId, 
+         -month, year);                                                  
+      72 +    const calculated = await this.calculateReceipt(contractId, 
+         +month, year, startDay, endDay);                                
+      73  
+      74      const existing = await this.receiptRepository.findOne({
+      75        where: { contractId, month, year },
+     ...
+      78      if (existing) {
+      79        // Update existing receipt with new calculation and reset
+           to draft
+      80        existing.status = ReceiptStatus.PENDING_REVIEW;
+      81 +      existing.startDay = startDay ?? null;                    
+      82 +      existing.endDay = endDay ?? null;                        
+      83        existing.tenantName = calculated.tenantName;
+      84        existing.departmentName = calculated.departmentName;
+      85        existing.propertyAddress = calculated.propertyAddress;
+     ...
+       96      const saved = await this.receiptRepository.save(
+       97        this.receiptRepository.create({
+       98          ...calculated,
+       99 +        startDay: startDay ?? null,                           
+      100 +        endDay: endDay ?? null,                               
+      101          status: ReceiptStatus.PENDING_REVIEW,
+      102        }),
+      103      );
+
+⏺ Now update toReceipt to map the new fields:
+
+⏺ Update(src/receipt/receipt.service.ts)
+  ⎿  Added 2 lines
+      147        contractId: record.contractId,
+      148        month: record.month,
+      149        year: record.year,
+      150 +      startDay: record.startDay,                              
+      151 +      endDay: record.endDay,                                  
+      152        status: record.status,
+      153        tenantName: record.tenantName,
+      154        departmentName: record.departmentName,
+
+⏺ Now update calculateReceipt to accept startDay/endDay and apply proration:
+
+⏺ Update(src/receipt/receipt.service.ts)
+  ⎿  Added 2 lines
+      168      contractId: string,
+      169      month: number,
+      170      year: number,
+      171 +    startDay?: number,                                        
+      172 +    endDay?: number,                                          
+      173    ): Promise<Omit<Receipt, 'id' | 'status'>> {
+      174      const contract = await this.contractRepository.findOne({
+      175        where: { id: contractId },
+
+⏺ Now update the rent calculation and period label inside calculateReceipt:
+
+⏺ Update(src/receipt/receipt.service.ts)
+  ⎿  Added 17 lines, removed 3 lines
+      217  
+      218      const receiptItems: ReceiptItem[] = [];
+      219      let totalPayments = 0;
+      220 -    let totalDue = Number(contract.rentAmount);               
+      220  
+      221 +    let rentAmount: number;                                   
+      222 +    let rentDescription: string;                              
+      223 +    if (endDay !== undefined) {                               
+      224 +      const effectiveStartDay = startDay ?? 1;                
+      225 +      const daysInMonth = new Date(year, month, 0).getDate(); 
+      226 +      const daysOccupied = endDay - effectiveStartDay + 1;    
+      227 +      rentAmount = (daysOccupied / daysInMonth) * Number(contr
+          +act.rentAmount);                                              
+      228 +      rentDescription = `Monthly Rent (${daysOccupied}/${daysI
+          +nMonth} days)`;                                               
+      229 +    } else {                                                  
+      230 +      rentAmount = Number(contract.rentAmount);               
+      231 +      rentDescription = 'Monthly Rent';                       
+      232 +    }                                                         
+      233 +                                                              
+      234 +    let totalDue = rentAmount;                                
+      235 +                                                              
+      236      receiptItems.push({
+      223 -      description: 'Monthly Rent',                            
+      224 -      amount: Number(contract.rentAmount),                    
+      237 +      description: rentDescription,                           
+      238 +      amount: rentAmount,                                     
+      239      });
+      240  
+      241      if (lightConsumption.consumption > 0) {
+
+⏺ Now update the period label:
+
+⏺ Update(src/receipt/receipt.service.ts)
+  ⎿  Added 10 lines, removed 4 lines
+      276  
+      277      const balance = totalPayments - totalDue;
+      278  
+      279 +    const monthName = periodStart.toLocaleString('en-US', {   
+      280 +      month: 'long',                                          
+      281 +      year: 'numeric',                                        
+      282 +    });                                                       
+      283 +    const effectiveStartDay = startDay ?? 1;                  
+      284 +    const period = endDay                                     
+      285 +      ? `${effectiveStartDay}–${endDay} ${monthName}`         
+      286 +      : monthName;                                            
+      287 +                                                              
+      288      return {
+      289        contractId: contract.id,
+      290        month,
+     ...
+      292        tenantName: contract.tenant.name,
+      293        departmentName: contract.department.name,
+      294        propertyAddress: contract.department.property.address,
+      286 -      period: periodStart.toLocaleString('en-US', {           
+      287 -        month: 'long',                                        
+      288 -        year: 'numeric',                                      
+      289 -      }),                                                     
+      295 +      period,                                                 
+      296        items: receiptItems,
+      297        totalPayments,
+      298        totalDue,
+
+⏺ Step 4: Update the frontend.
+
+  Add the departureDay state and reset it on period change:
+
+⏺ Update(~/project-t/apps/client/src/pages/DepartmentBilling.tsx)
+  ⎿  Added 2 lines
+      103    const [loading, setLoading] = useState(true);
+      104    const [error, setError] = useState<string | null>(null);
+      105  
+      106 +  const [departureDay, setDepartureDay] = useState('');       
+      107 +                                                              
+      108    // Add extra charge form
+      109    const [chargeDesc, setChargeDesc] = useState('');
+      110    const [chargeAmount, setChargeAmount] = useState('');
+
+⏺ Add setDepartureDay('') to the existing month/year reset effect:
+
+⏺ Update(~/project-t/apps/client/src/pages/DepartmentBilling.tsx)
+  ⎿  Added 1 line
+      183    useEffect(() => {
+      184      setReceipt(null);
+      185      setPreviewReceipt(null);
+      186 +    setDepartureDay('');                                      
+      187    }, [month, year]);
+      188  
+      189    // ── Refresh extra charges only ────────────────────────
+
+⏺ Update handleGenerateReceipt to pass the departure day params:
+
+⏺ Update(~/project-t/apps/client/src/pages/DepartmentBilling.tsx)
+  ⎿  Added 6 lines, removed 1 line
+      237      if (!contract) return;
+      238      setReceiptLoading(true);
+      239      try {
+      240 +      const params = new URLSearchParams({ month: String(month
+          +), year: String(year) });                                     
+      241 +      if (departureDay) {                                     
+      242 +        params.set('startDay', '1');                          
+      243 +        params.set('endDay', departureDay);                   
+      244 +      }                                                       
+      245        const data = await apiFetch<GeneratedReceipt>(
+      241 -        `/contracts/${contract.id}/receipts?month=${month}&yea
+          -r=${year}`,                                                   
+      246 +        `/contracts/${contract.id}/receipts?${params}`,       
+      247          { method: 'POST' },
+      248        );
+      249        setReceipt(data);
+
+⏺ Update the useCallback deps to include departureDay:
+
+⏺ Update(~/project-t/apps/client/src/pages/DepartmentBilling.tsx)
+  ⎿  Added 1 line, removed 1 line
+      255      } finally {
+      256        setReceiptLoading(false);
+      257      }
+      258 -  }, [contract, month, year]);                                
+      258 +  }, [contract, month, year, departureDay]);                  
+      259  
+      260    const handleApproveReceipt = async () => {
+      261      if (!contract || !receipt) return;
+
+⏺ Add the departure day input field after the period selectors:
+
+⏺ Update(~/project-t/apps/client/src/pages/DepartmentBilling.tsx)
+  ⎿  Added 16 lines
+      443          />
+      444        </div>
+      445  
+      446 +      {/* Departure day (partial month) */}                   
+      447 +      <div className="flex items-center gap-3 mb-6">          
+      448 +        <label className="text-[13px] font-medium text-on-surf
+          +ace-medium whitespace-nowrap">                                
+      449 +          Día de salida <span className="text-on-surface-faint
+          +">(opcional)</span>                                           
+      450 +        </label>                                              
+      451 +        <input                                                
+      452 +          type="number"                                       
+      453 +          min={1}                                             
+      454 +          max={31}                                            
+      455 +          value={departureDay}                                
+      456 +          onChange={(e) => setDepartureDay(e.target.value)}   
+      457 +          placeholder="ej. 15"                                
+      458 +          className={inputCls + ' max-w-[100px]'}             
+      459 +        />                                                    
+      460 +      </div>                                                  
+      461 +                                                              
+      462        {/* No contract warning */}
+      463        {!contract && (
+      464          <div className="mb-6 px-4 py-3 rounded-xl bg-status-wa
+           rning-bg border border-status-warning-border text-status-warni
+           ng-text text-sm flex items-center gap-2">
+
+⏺ Step 5: Type checks.
+
+⏺ Bash(cd /Users/georgemaxiccapa/project-t/apps/api && npx tsc --noEmit 2>&1)
+  ⎿  (No output)
+
+⏺ Bash(npx tsc --noEmit 2>&1)
+  ⎿  (No output)
+
+⏺ Both type checks pass cleanly.
+
+⏺ All four changes are implemented and type-clean. Here's a summary:
+
+  Entity (receipt.entity.ts) — Two nullable startDay/endDay int columns added
+  after year. TypeORM will auto-sync the schema on next startup.
+
+  Controller (contract.controller.ts) — POST :id/receipts now accepts optional
+  startDay and endDay query params via ParseIntPipe({ optional: true }).
+
+  Service (receipt.service.ts):
+  - Receipt interface has optional startDay?/endDay? fields
+  - issueReceipt and calculateReceipt accept startDay/endDay
+  - When endDay is set, rent is prorated: (daysOccupied / daysInMonth) × 
+  rentAmount with description Monthly Rent (15/31 days)
+  - Period label becomes 1–15 March 2026 for partial months, unchanged otherwise
+  - toReceipt maps the new entity fields
+
+  Frontend (DepartmentBilling.tsx):
+  - departureDay state, reset to '' when month/year changes
+  - handleGenerateReceipt builds URLSearchParams and appends
+  startDay=1&endDay=<day> when set
+  - "Día de salida (opcional)" number input (1–31) rendered below the period
+  selectors
+
+✻ Sautéed for 1m 59s
+
+❯ also when a tenant leaves the apartment we should lecture his last        
+  consumption. This implemention covers that scenario?                      
+
+⏺ Good question. Let me check how consumption is actually calculated for a
+  period before answering.
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Partially, but there's an important nuance.
+
+  The consumption side works correctly on its own. Here's how
+  calculateConsumptionForPeriod works:
+
+  1. It looks for a reading tagged billingMonth=X, billingYear=Y — the current
+  reading
+  2. It finds the most recent reading from any prior month — the previous
+  reading
+  3. Consumption = currentReading - previousReading
+
+  So for a tenant leaving on Feb 15:
+  - Staff physically reads the meter on Feb 15 and enters it into the system
+  tagged as billingMonth=2, billingYear=2026
+  - Receipt generation finds that reading as the "current" reading for February
+  - Subtracts the January reading → correct consumption for the days occupied
+
+  The proration and consumption are independent by design, which is correct —
+  rent is day-based, but consumption is meter-based. You bill exactly what the
+  meter shows was consumed.
+
+  ---
+  What the implementation does NOT cover:
+
+  The receipt generation doesn't enforce or remind staff that a departure
+  reading is needed. If no reading is recorded for the departure month,
+  calculateConsumptionForPeriod returns { consumption: 0, cost: 0 } silently —
+  the receipt generates with zero utility charges and no warning.
+
+  The existing "Pendiente de lecturas" warning in the UI already covers this
+  (!lightHasReadings || !waterHasReadings), so the user will at least see that
+  warning before generating. But it won't connect that warning to the departure
+  scenario specifically.
+
+  In short: Yes, the scenario is covered — but it depends on the correct
+  workflow:
+  1. Take a physical meter reading on the departure day
+  2. Enter it in the system for that billing month
+  3. Then generate the receipt with the departure day set
+
+  The system doesn't automate step 1 or 2, nor does it block receipt generation
+  if they're missing, but that's consistent with how the rest of the billing
+  flow works.
+
+✻ Crunched for 49s

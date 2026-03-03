@@ -35,6 +35,12 @@ export class ReceiptEntity {
   @Column({ type: 'int' })
   year: number;
 
+  @Column({ type: 'int', nullable: true, default: null })
+  startDay: number | null;
+
+  @Column({ type: 'int', nullable: true, default: null })
+  endDay: number | null;
+
   @Column({ type: 'varchar', length: 64 })
   tenantName: string;
 

@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, Link, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import {
   ArrowLeft,
   DoorOpen,
@@ -10,6 +10,7 @@ import {
   Check,
   X as XIcon,
   Send,
+  Ban,
 } from 'lucide-react';
 import { apiFetch, apiPost } from '../lib/api';
 import Spinner from '../components/Spinner';
@@ -36,7 +37,10 @@ interface Contract {
   startDate: string;
   endDate: string;
   rentAmount: number;
+  advancePayment: number;
+  guaranteeDeposit: number;
   departmentId: string;
+  status: 'active' | 'terminated';
   tenant: { id: string; name: string };
   department: Department;
 }
@@ -86,14 +90,26 @@ interface GeneratedReceipt {
   balance: number;
 }
 
+interface TerminationResult {
+  id: string;
+  contractId: string;
+  tenantName: string;
+  departmentName: string;
+  expectedDepartureDate: string;
+  actualDepartureDate: string;
+  apartmentCondition: string | null;
+  advanceApplied: number;
+  guaranteeDeposit: number;
+  guaranteeDeduction: number;
+  guaranteeReturn: number;
+  createdAt: string;
+}
+
 // ── Component ──────────────────────────────────────────
 
 export default function DepartmentBilling() {
   const { id } = useParams<{ id: string }>();
   const departmentId = id!;
-  const [searchParams, setSearchParams] = useSearchParams();
-  const shouldAutoGenerate = searchParams.get('autogenerate') === '1';
-  const autoGenerateTriggeredRef = useRef(false);
 
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -105,6 +121,17 @@ export default function DepartmentBilling() {
   const [extraCharges, setExtraCharges] = useState<ExtraCharge[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [showDeparture, setShowDeparture] = useState(false);
+  const [departureDay, setDepartureDay] = useState('');
+  const [prorateRent, setProrateRent] = useState(false);
+
+  // Termination form state
+  const [actualDepartureDate, setActualDepartureDate] = useState('');
+  const [apartmentCondition, setApartmentCondition] = useState('');
+  const [guaranteeDeduction, setGuaranteeDeduction] = useState('0');
+  const [termination, setTermination] = useState<TerminationResult | null>(null);
+  const [terminationLoading, setTerminationLoading] = useState(false);
 
   // Add extra charge form
   const [chargeDesc, setChargeDesc] = useState('');
@@ -148,10 +175,18 @@ export default function DepartmentBilling() {
       setContract(activeContract);
 
       if (activeContract) {
-        const charges = await apiFetch<ExtraCharge[]>(
-          `/extra-charges?contractId=${activeContract.id}&month=${month}&year=${year}`,
-        );
+        const [charges, existingTermination] = await Promise.all([
+          apiFetch<ExtraCharge[]>(
+            `/extra-charges?contractId=${activeContract.id}&month=${month}&year=${year}`,
+          ),
+          apiFetch<TerminationResult | null>(`/contracts/${activeContract.id}/termination`).catch(() => null),
+        ]);
         setExtraCharges(charges);
+
+        if (existingTermination) {
+          setTermination(existingTermination);
+          setShowDeparture(true);
+        }
 
         // Load preview/saved receipt for the selected period
         try {
@@ -180,11 +215,16 @@ export default function DepartmentBilling() {
     fetchData();
   }, [fetchData]);
 
-  // Clear receipt state when month or year changes
+  // Clear receipt state when month or year changes (but preserve termination)
   useEffect(() => {
     setReceipt(null);
     setPreviewReceipt(null);
-  }, [month, year]);
+    if (!termination) {
+      setShowDeparture(false);
+      setDepartureDay('');
+      setProrateRent(false);
+    }
+  }, [month, year, termination]);
 
   // ── Refresh extra charges only ────────────────────────
 
@@ -224,7 +264,7 @@ export default function DepartmentBilling() {
     }
   };
 
-  const handleDeleteCharge = async (chargeId: number) => {
+  const handleDeleteCharge = async (chargeId: string) => {
     try {
       await apiFetch(`/extra-charges/${chargeId}`, { method: 'DELETE' });
       await refreshCharges();
@@ -237,8 +277,14 @@ export default function DepartmentBilling() {
     if (!contract) return;
     setReceiptLoading(true);
     try {
+      const params = new URLSearchParams({ month: String(month), year: String(year) });
+      if (departureDay) {
+        params.set('startDay', '1');
+        params.set('endDay', departureDay);
+        params.set('prorateRent', String(prorateRent));
+      }
       const data = await apiFetch<GeneratedReceipt>(
-        `/contracts/${contract.id}/receipts?month=${month}&year=${year}`,
+        `/contracts/${contract.id}/receipts?${params}`,
         { method: 'POST' },
       );
       setReceipt(data);
@@ -250,7 +296,7 @@ export default function DepartmentBilling() {
     } finally {
       setReceiptLoading(false);
     }
-  }, [contract, month, year]);
+  }, [contract, month, year, departureDay, prorateRent]);
 
   const handleApproveReceipt = async () => {
     if (!contract || !receipt) return;
@@ -297,27 +343,54 @@ export default function DepartmentBilling() {
     alert('WhatsApp sending will be implemented in next phase');
   };
 
-  useEffect(() => {
-    if (!shouldAutoGenerate || !contract || receiptLoading) return;
-    if (autoGenerateTriggeredRef.current) return;
-    autoGenerateTriggeredRef.current = true;
-    void handleGenerateReceipt().finally(() => {
-      const next = new URLSearchParams(searchParams);
-      next.delete('autogenerate');
-      setSearchParams(next, { replace: true });
-    });
-  }, [
-    shouldAutoGenerate,
-    contract,
-    receiptLoading,
-    searchParams,
-    setSearchParams,
-    handleGenerateReceipt,
-  ]);
+  const handleTerminate = async () => {
+    if (!contract || !actualDepartureDate) return;
+    setTerminationLoading(true);
+    try {
+      const result = await apiFetch<TerminationResult>(
+        `/contracts/${contract.id}/termination`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            actualDepartureDate,
+            apartmentCondition: apartmentCondition || undefined,
+            guaranteeDeduction: Number(guaranteeDeduction) || 0,
+          }),
+        },
+      );
+      setTermination(result);
+      setContract((prev) => prev ? { ...prev, status: 'terminated' } : prev);
+    } catch (err) {
+      const details = err instanceof Error ? ` (${err.message})` : '';
+      setError(`Error al cerrar contrato${details}`);
+    } finally {
+      setTerminationLoading(false);
+    }
+  };
+
+  const handleCancelDeparture = () => {
+    setShowDeparture(false);
+    setDepartureDay('');
+    setProrateRent(false);
+    setActualDepartureDate('');
+    setApartmentCondition('');
+    setGuaranteeDeduction('0');
+  };
 
   // ── Computed ──────────────────────────────────────────
 
-  const rentAmount = contract ? Number(contract.rentAmount) : 0;
+  const isTerminated = contract?.status === 'terminated' || termination !== null;
+
+  const fullRent = contract ? Number(contract.rentAmount) : 0;
+  const rentAmount = (() => {
+    if (!contract) return 0;
+    if (showDeparture && departureDay && prorateRent) {
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const daysOccupied = Number(departureDay);
+      return (daysOccupied / daysInMonth) * fullRent;
+    }
+    return fullRent;
+  })();
 
   // Use period-specific data from the receipt preview/saved receipt when available.
   // Fall back to current consumption only when no preview has loaded yet.
@@ -361,6 +434,11 @@ export default function DepartmentBilling() {
     0,
   );
   const total = rentAmount + lightCost + waterCost + extraTotal;
+
+  // Guarantee return preview (computed from form inputs, not yet saved)
+  const guaranteeDepositAmt = contract ? Number(contract.guaranteeDeposit) : 0;
+  const guaranteeDeductionAmt = Number(guaranteeDeduction) || 0;
+  const guaranteeReturnPreview = Math.max(0, guaranteeDepositAmt - guaranteeDeductionAmt);
 
   // ── Style helpers ─────────────────────────────────────
 
@@ -425,6 +503,15 @@ export default function DepartmentBilling() {
         </div>
       </div>
 
+      {/* Terminated banner */}
+      {isTerminated && (
+        <div className="mb-6 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200/60 dark:border-red-700/40 text-red-700 dark:text-red-300 text-sm flex items-center gap-2">
+          <Ban size={16} />
+          <span className="font-semibold">Contrato terminado.</span>
+          <span className="text-red-600 dark:text-red-400">No se pueden generar nuevos recibos.</span>
+        </div>
+      )}
+
       {error && (
         <div className="mb-4 px-4 py-3 rounded-xl bg-status-danger-bg border border-status-danger-border text-status-danger-text text-sm">
           {error}
@@ -454,6 +541,173 @@ export default function DepartmentBilling() {
           className={inputCls + ' max-w-[100px]'}
         />
       </div>
+
+      {/* Departure panel trigger */}
+      {contract && !showDeparture && !isTerminated && (
+        <button
+          onClick={() => { setShowDeparture(true); if (contract.endDate) setActualDepartureDate(contract.endDate.slice(0, 10)); }}
+          className="flex items-center gap-2 text-[13px] font-medium text-on-surface-medium hover:text-on-surface transition-colors mb-6"
+        >
+          <DoorOpen size={15} />
+          Indicar salida anticipada
+        </button>
+      )}
+
+      {/* Departure panel */}
+      {contract && showDeparture && (
+        <div className="bg-surface rounded-2xl border border-border p-5 shadow-sm mb-6 space-y-4">
+          {/* Billing day / prorate row — only when contract is still active */}
+          {!termination && (
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="text-[13px] font-medium text-on-surface-medium whitespace-nowrap">
+                Dia de salida
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={31}
+                value={departureDay}
+                onChange={(e) => { setDepartureDay(e.target.value); if (!e.target.value) setProrateRent(false); }}
+                placeholder="ej. 15"
+                className={inputCls + ' max-w-[100px]'}
+              />
+              {departureDay && (
+                <label className="flex items-center gap-2 text-[13px] text-on-surface-medium cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={prorateRent}
+                    onChange={(e) => setProrateRent(e.target.checked)}
+                    className="w-4 h-4 rounded accent-blue-600"
+                  />
+                  Prorratear alquiler
+                </label>
+              )}
+              <button
+                onClick={handleCancelDeparture}
+                className="text-[13px] text-on-surface-faint hover:text-on-surface-medium transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
+
+          {/* Termination section */}
+          <div className="border-t border-border pt-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-muted mb-3">
+              Cierre de contrato
+            </p>
+
+            {termination ? (
+              /* ── Read-only summary ── */
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 ring-1 ring-red-200/50 dark:ring-red-700/40">
+                    <Ban size={11} />
+                    Contrato cerrado
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-[13px]">
+                  <span className="text-on-surface-medium">Fecha esperada de salida</span>
+                  <span className="text-on-surface font-medium">
+                    {new Date(termination.expectedDepartureDate).toLocaleDateString('es-PE')}
+                  </span>
+                  <span className="text-on-surface-medium">Fecha real de salida</span>
+                  <span className="text-on-surface font-medium">
+                    {new Date(termination.actualDepartureDate).toLocaleDateString('es-PE')}
+                  </span>
+                  {termination.apartmentCondition && (
+                    <>
+                      <span className="text-on-surface-medium">Condicion del apartamento</span>
+                      <span className="text-on-surface font-medium">{termination.apartmentCondition}</span>
+                    </>
+                  )}
+                  <span className="text-on-surface-medium">Adelanto aplicado</span>
+                  <span className="text-on-surface font-medium">
+                    S/ {Number(termination.advanceApplied).toFixed(2)} → cubre ultimo mes
+                  </span>
+                  <span className="text-on-surface-medium">Deposito de garantia</span>
+                  <span className="text-on-surface font-medium">S/ {Number(termination.guaranteeDeposit).toFixed(2)}</span>
+                  <span className="text-on-surface-medium">Deduccion</span>
+                  <span className="text-on-surface font-medium">S/ {Number(termination.guaranteeDeduction).toFixed(2)}</span>
+                  <span className="text-on-surface-medium font-semibold">A devolver</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                    S/ {Number(termination.guaranteeReturn).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              /* ── Termination form ── */
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+                      Fecha real de salida
+                    </label>
+                    <input
+                      type="date"
+                      value={actualDepartureDate}
+                      onChange={(e) => setActualDepartureDate(e.target.value)}
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+                    Condicion del apartamento
+                  </label>
+                  <textarea
+                    value={apartmentCondition}
+                    onChange={(e) => setApartmentCondition(e.target.value)}
+                    placeholder="Descripcion del estado del apartamento..."
+                    rows={2}
+                    className={inputCls + ' resize-none'}
+                  />
+                </div>
+
+                <div className="bg-surface-alt rounded-xl p-3 space-y-2">
+                  <div className="flex justify-between text-[13px]">
+                    <span className="text-on-surface-medium">Deposito de garantia</span>
+                    <span className="font-medium text-on-surface">S/ {guaranteeDepositAmt.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[13px]">
+                    <span className="text-on-surface-medium">Deduccion (danos, etc.)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={guaranteeDeduction}
+                      onChange={(e) => setGuaranteeDeduction(e.target.value)}
+                      className={inputCls + ' max-w-[120px] text-right'}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[13px] font-semibold border-t border-border pt-2">
+                    <span className="text-on-surface-medium">A devolver</span>
+                    <span className="text-emerald-600 dark:text-emerald-400">
+                      S/ {guaranteeReturnPreview.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[13px] pt-1">
+                    <span className="text-on-surface-medium">Adelanto aplicado</span>
+                    <span className="font-medium text-on-surface">
+                      S/ {(contract ? Number(contract.advancePayment) : 0).toFixed(2)} → cubre ultimo mes
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleTerminate}
+                  disabled={!actualDepartureDate || terminationLoading}
+                  className="w-full py-2.5 bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:bg-surface-raised disabled:text-on-surface-faint text-white text-sm font-medium rounded-xl shadow-sm transition-all duration-150 flex items-center justify-center gap-2"
+                >
+                  <Ban size={15} />
+                  {terminationLoading ? 'Procesando...' : 'Confirmar cierre de contrato'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* No contract warning */}
       {!contract && (
@@ -551,7 +805,7 @@ export default function DepartmentBilling() {
       )}
 
       {/* Add extra charge */}
-      {contract && (
+      {contract && !isTerminated && (
         <div className="bg-surface rounded-2xl border border-border p-5 shadow-sm mb-6">
           <h3 className="text-sm font-semibold text-on-surface-strong mb-3 flex items-center gap-2">
             <Plus size={16} className="text-primary-600" />
@@ -609,7 +863,7 @@ export default function DepartmentBilling() {
       )}
 
       {/* Generate receipt button */}
-      {contract && (
+      {contract && !isTerminated && (
         <button
           onClick={handleGenerateReceipt}
           disabled={receiptLoading}

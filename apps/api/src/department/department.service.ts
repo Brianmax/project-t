@@ -52,13 +52,31 @@ export class DepartmentService {
       if (!providedDate) {
         return new Date();
       }
-      const parsedDate = new Date(providedDate);
+      const parsedDate = new Date(providedDate + 'T12:00:00');
       if (Number.isNaN(parsedDate.getTime())) {
         throw new BadRequestException(
           `Invalid initial ${readingType} reading date`,
         );
       }
       return parsedDate;
+    };
+
+    const resolveBillingPeriod = (
+      date: Date,
+    ): { month: number; year: number } => {
+      if (createDepartmentDto.initialBillingMonth !== undefined) {
+        return {
+          month: createDepartmentDto.initialBillingMonth,
+          year: createDepartmentDto.initialBillingYear ?? date.getFullYear(),
+        };
+      }
+      if (date.getDate() === 1) {
+        const m = date.getMonth();
+        return m === 0
+          ? { month: 12, year: date.getFullYear() - 1 }
+          : { month: m, year: date.getFullYear() };
+      }
+      return { month: date.getMonth() + 1, year: date.getFullYear() };
     };
 
     // Handle initial water reading
@@ -70,13 +88,17 @@ export class DepartmentService {
       const savedWaterMeter =
         await this.departmentMeterRepository.save(waterMeter);
 
+      const waterDate = resolveReadingDate(
+        createDepartmentDto.initialWaterReadingDate,
+        'water',
+      );
+      const { month: wm, year: wy } = resolveBillingPeriod(waterDate);
       const reading = this.meterReadingRepository.create({
         reading: createDepartmentDto.initialWaterReading,
-        date: resolveReadingDate(
-          createDepartmentDto.initialWaterReadingDate,
-          'water',
-        ),
+        date: waterDate,
         departmentMeter: savedWaterMeter,
+        billingMonth: wm,
+        billingYear: wy,
       });
       await this.meterReadingRepository.save(reading);
     }
@@ -90,13 +112,17 @@ export class DepartmentService {
       const savedLightMeter =
         await this.departmentMeterRepository.save(lightMeter);
 
+      const lightDate = resolveReadingDate(
+        createDepartmentDto.initialElectricityReadingDate,
+        'electricity',
+      );
+      const { month: lm, year: ly } = resolveBillingPeriod(lightDate);
       const reading = this.meterReadingRepository.create({
         reading: createDepartmentDto.initialElectricityReading,
-        date: resolveReadingDate(
-          createDepartmentDto.initialElectricityReadingDate,
-          'electricity',
-        ),
+        date: lightDate,
         departmentMeter: savedLightMeter,
+        billingMonth: lm,
+        billingYear: ly,
       });
       await this.meterReadingRepository.save(reading);
     }

@@ -18,6 +18,8 @@ export interface Receipt {
   contractId: string;
   month: number;
   year: number;
+  startDay?: number | null;
+  endDay?: number | null;
   status: ReceiptStatus;
   tenantName: string;
   departmentName: string;
@@ -63,16 +65,22 @@ export class ReceiptService {
     contractId: string,
     month: number,
     year: number,
+    startDay?: number,
+    endDay?: number,
+    prorateRent?: boolean,
   ): Promise<Receipt> {
     // Always recalculate to get the latest extra charges and consumption
-    const calculated = await this.calculateReceipt(contractId, month, year);
+    const calculated = await this.calculateReceipt(contractId, month, year, startDay, endDay, prorateRent);
 
     const existing = await this.receiptRepository.findOne({
       where: { contractId, month, year },
     });
 
     if (existing) {
-      // Update existing receipt with new calculation
+      // Update existing receipt with new calculation and reset to draft
+      existing.status = ReceiptStatus.PENDING_REVIEW;
+      existing.startDay = startDay ?? null;
+      existing.endDay = endDay ?? null;
       existing.tenantName = calculated.tenantName;
       existing.departmentName = calculated.departmentName;
       existing.propertyAddress = calculated.propertyAddress;
@@ -89,6 +97,8 @@ export class ReceiptService {
     const saved = await this.receiptRepository.save(
       this.receiptRepository.create({
         ...calculated,
+        startDay: startDay ?? null,
+        endDay: endDay ?? null,
         status: ReceiptStatus.PENDING_REVIEW,
       }),
     );
@@ -138,6 +148,8 @@ export class ReceiptService {
       contractId: record.contractId,
       month: record.month,
       year: record.year,
+      startDay: record.startDay,
+      endDay: record.endDay,
       status: record.status,
       tenantName: record.tenantName,
       departmentName: record.departmentName,
@@ -157,6 +169,9 @@ export class ReceiptService {
     contractId: string,
     month: number,
     year: number,
+    startDay?: number,
+    endDay?: number,
+    prorateRent?: boolean,
   ): Promise<Omit<Receipt, 'id' | 'status'>> {
     const contract = await this.contractRepository.findOne({
       where: { id: contractId },
@@ -182,15 +197,15 @@ export class ReceiptService {
       await this.consumptionService.calculateConsumptionForPeriod(
         contract.department.id,
         MeterType.LIGHT,
-        periodStart,
-        periodEnd,
+        month,
+        year,
       );
     const waterConsumptionData =
       await this.consumptionService.calculateConsumptionForPeriod(
         contract.department.id,
         MeterType.WATER,
-        periodStart,
-        periodEnd,
+        month,
+        year,
       );
 
     const lightConsumption = {
@@ -204,11 +219,25 @@ export class ReceiptService {
 
     const receiptItems: ReceiptItem[] = [];
     let totalPayments = 0;
-    let totalDue = Number(contract.rentAmount);
+
+    let rentAmount: number;
+    let rentDescription: string;
+    if (endDay !== undefined && prorateRent) {
+      const effectiveStartDay = startDay ?? 1;
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const daysOccupied = endDay - effectiveStartDay + 1;
+      rentAmount = (daysOccupied / daysInMonth) * Number(contract.rentAmount);
+      rentDescription = `Monthly Rent (${daysOccupied}/${daysInMonth} days)`;
+    } else {
+      rentAmount = Number(contract.rentAmount);
+      rentDescription = 'Monthly Rent';
+    }
+
+    let totalDue = rentAmount;
 
     receiptItems.push({
-      description: 'Monthly Rent',
-      amount: Number(contract.rentAmount),
+      description: rentDescription,
+      amount: rentAmount,
     });
 
     if (lightConsumption.consumption > 0) {
@@ -249,6 +278,15 @@ export class ReceiptService {
 
     const balance = totalPayments - totalDue;
 
+    const monthName = periodStart.toLocaleString('en-US', {
+      month: 'long',
+      year: 'numeric',
+    });
+    const effectiveStartDay = startDay ?? 1;
+    const period = endDay
+      ? `${effectiveStartDay}–${endDay} ${monthName}`
+      : monthName;
+
     return {
       contractId: contract.id,
       month,
@@ -256,10 +294,7 @@ export class ReceiptService {
       tenantName: contract.tenant.name,
       departmentName: contract.department.name,
       propertyAddress: contract.department.property.address,
-      period: periodStart.toLocaleString('en-US', {
-        month: 'long',
-        year: 'numeric',
-      }),
+      period,
       items: receiptItems,
       totalPayments,
       totalDue,

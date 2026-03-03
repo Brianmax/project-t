@@ -7,6 +7,7 @@ import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
+import DatePicker from '../components/DatePicker';
 
 interface Property {
   id: string;
@@ -33,6 +34,14 @@ export default function Departments() {
   const [propertyId, setPropertyId] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const [waterReading, setWaterReading] = useState('');
+  const [electricityReading, setElectricityReading] = useState('');
+  const [initialDate, setInitialDate] = useState(today);
+  const [initialBillingMonth, setInitialBillingMonth] = useState(now.getMonth() + 1);
+  const [initialBillingYear, setInitialBillingYear] = useState(now.getFullYear());
+
   useEffect(() => {
     Promise.all([
       apiFetch<Department[]>('/departments'),
@@ -56,12 +65,23 @@ export default function Departments() {
         floor: Number(floor),
         numberOfRooms: Number(rooms),
         propertyId: propertyId,
+        initialWaterReading: Number(waterReading),
+        initialWaterReadingDate: initialDate,
+        initialElectricityReading: Number(electricityReading),
+        initialElectricityReadingDate: initialDate,
+        initialBillingMonth,
+        initialBillingYear,
       });
       setDepartments((prev) => [...prev, added]);
       setName('');
       setFloor('');
       setRooms('');
       setPropertyId('');
+      setWaterReading('');
+      setElectricityReading('');
+      setInitialDate(new Date().toISOString().split('T')[0]);
+      setInitialBillingMonth(new Date().getMonth() + 1);
+      setInitialBillingYear(new Date().getFullYear());
       setModalOpen(false);
     } catch {
       setError('Error al agregar departamento');
@@ -180,6 +200,55 @@ export default function Departments() {
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
+          </div>
+          <div className="pt-2">
+            <p className="text-[13px] font-semibold text-on-surface-medium mb-3">Lecturas Iniciales</p>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Lectura Inicial Agua</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={waterReading}
+                    onChange={(e) => setWaterReading(e.target.value)}
+                    placeholder="0"
+                    required
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Lectura Inicial Luz</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={electricityReading}
+                    onChange={(e) => setElectricityReading(e.target.value)}
+                    placeholder="0"
+                    required
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Fecha de Lectura</label>
+                <DatePicker value={initialDate} onChange={setInitialDate} required />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Mes de Facturación</label>
+                  <select value={initialBillingMonth} onChange={(e) => setInitialBillingMonth(Number(e.target.value))} required className={inputCls}>
+                    {['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'].map((n, i) => (
+                      <option key={i + 1} value={i + 1}>{n}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Año de Facturación</label>
+                  <input type="number" value={initialBillingYear} onChange={(e) => setInitialBillingYear(Number(e.target.value))} required className={inputCls} min={2000} max={2100} />
+                </div>
+              </div>
+            </div>
           </div>
           <button
             type="submit"

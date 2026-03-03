@@ -26,4 +26,10 @@ export class MeterReading {
 
   @Column({ name: 'department_meter_id', type: 'uuid' })
   departmentMeterId: string;
+
+  @Column({ name: 'billing_month', type: 'int', nullable: true })
+  billingMonth: number | null;
+
+  @Column({ name: 'billing_year', type: 'int', nullable: true })
+  billingYear: number | null;
 }

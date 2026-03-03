@@ -1,4 +1,4 @@
-import { IsDateString, IsNotEmpty, IsNumber, IsUUID } from 'class-validator';
+import { IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
 export class CreateMeterReadingDto {
   @IsNumber()
@@ -12,4 +12,14 @@ export class CreateMeterReadingDto {
   @IsUUID()
   @IsNotEmpty()
   departmentMeterId: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  @IsOptional()
+  billingMonth?: number;
+
+  @IsInt()
+  @IsOptional()
+  billingYear?: number;
 }

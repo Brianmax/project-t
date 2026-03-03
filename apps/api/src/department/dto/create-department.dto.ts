@@ -1,10 +1,13 @@
 import {
   IsDateString,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
+  Min,
 } from 'class-validator';
 
 export class CreateDepartmentDto {
@@ -39,4 +42,14 @@ export class CreateDepartmentDto {
   @IsDateString()
   @IsOptional()
   initialElectricityReadingDate?: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  @IsOptional()
+  initialBillingMonth?: number;
+
+  @IsInt()
+  @IsOptional()
+  initialBillingYear?: number;
 }

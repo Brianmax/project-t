@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PropertyModule } from './property/property.module';
@@ -13,10 +15,17 @@ import { ConsumptionModule } from './consumption/consumption.module';
 import { PaymentModule } from './payment/payment.module';
 import { ReceiptModule } from './receipt/receipt.module';
 import { ContractSettlementModule } from './contract-settlement/contract-settlement.module';
+import { ContractTerminationModule } from './contract-termination/contract-termination.module';
 import { ExtraChargeModule } from './extra-charge/extra-charge.module';
+import { AuthModule } from './auth/auth.module';
+import { UserModule } from './user/user.module';
+import { AdminModule } from './admin/admin.module';
+import { SeedModule } from './seed/seed.module';
+import { JwtGuard } from './auth/guards/jwt.guard';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: 'localhost',
@@ -38,9 +47,17 @@ import { ExtraChargeModule } from './extra-charge/extra-charge.module';
     PaymentModule,
     ReceiptModule,
     ContractSettlementModule,
+    ContractTerminationModule,
     ExtraChargeModule,
+    AuthModule,
+    UserModule,
+    AdminModule,
+    SeedModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    { provide: APP_GUARD, useClass: JwtGuard },
+  ],
 })
 export class AppModule {}

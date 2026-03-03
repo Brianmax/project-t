@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository } from 'typeorm';
 import {
   DepartmentMeter,
   MeterType,
@@ -25,8 +25,8 @@ export class ConsumptionService {
   async calculateConsumptionForPeriod(
     departmentId: string,
     meterType: MeterType,
-    startDate: Date,
-    endDate: Date,
+    month: number,
+    year: number,
   ): Promise<{ consumption: number; cost: number }> {
     const departmentMeter = await this.departmentMeterRepository.findOne({
       where: { departmentId, meterType },
@@ -43,22 +43,39 @@ export class ConsumptionService {
         })
       : null;
 
-    const readings = await this.meterReadingRepository.find({
+    const currentReading = await this.meterReadingRepository.findOne({
       where: {
         departmentMeterId: departmentMeter.id,
-        date: Between(startDate, endDate),
+        billingMonth: month,
+        billingYear: year,
       },
-      order: { date: 'ASC' },
+      order: { date: 'DESC' },
     });
 
-    if (readings.length < 2) {
+    if (!currentReading) {
       return { consumption: 0, cost: 0 };
     }
 
-    const firstReading = readings[0].reading;
-    const lastReading = readings[readings.length - 1].reading;
+    const previousReading = await this.meterReadingRepository
+      .createQueryBuilder('mr')
+      .where('mr.departmentMeterId = :meterId', {
+        meterId: departmentMeter.id,
+      })
+      .andWhere(
+        '(mr.billingYear < :year OR (mr.billingYear = :year AND mr.billingMonth < :month))',
+        { year, month },
+      )
+      .orderBy('mr.billingYear', 'DESC')
+      .addOrderBy('mr.billingMonth', 'DESC')
+      .addOrderBy('mr.date', 'DESC')
+      .getOne();
 
-    const consumption = lastReading - firstReading;
+    if (!previousReading) {
+      return { consumption: 0, cost: 0 };
+    }
+
+    const consumption =
+      Number(currentReading.reading) - Number(previousReading.reading);
     let cost = 0;
 
     if (meterType === MeterType.LIGHT) {

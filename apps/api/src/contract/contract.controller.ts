@@ -8,6 +8,7 @@ import {
   Delete,
   Query,
   ParseIntPipe,
+  ParseBoolPipe,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -20,6 +21,11 @@ import {
   ContractSettlementService,
   SettlementResult,
 } from '../contract-settlement/contract-settlement.service';
+import {
+  ContractTerminationService,
+  TerminationResult,
+} from '../contract-termination/contract-termination.service';
+import { CreateContractTerminationDto } from '../contract-termination/dto/create-contract-termination.dto';
 
 @Controller('contracts')
 export class ContractController {
@@ -27,6 +33,7 @@ export class ContractController {
     private readonly contractService: ContractService,
     private readonly receiptService: ReceiptService,
     private readonly contractSettlementService: ContractSettlementService,
+    private readonly contractTerminationService: ContractTerminationService,
   ) {}
 
   @Get('receipts/pending')
@@ -77,8 +84,11 @@ export class ContractController {
     @Param('id') contractId: string,
     @Query('month', ParseIntPipe) month: number,
     @Query('year', ParseIntPipe) year: number,
+    @Query('startDay', new ParseIntPipe({ optional: true })) startDay?: number,
+    @Query('endDay', new ParseIntPipe({ optional: true })) endDay?: number,
+    @Query('prorateRent', new ParseBoolPipe({ optional: true })) prorateRent?: boolean,
   ): Promise<Receipt> {
-    return this.receiptService.issueReceipt(contractId, month, year);
+    return this.receiptService.issueReceipt(contractId, month, year, startDay, endDay, prorateRent);
   }
 
   @Patch(':id/receipts/status')
@@ -105,5 +115,20 @@ export class ContractController {
       contractId,
       new Date(actualEndDate),
     );
+  }
+
+  @Post(':id/termination')
+  terminateContract(
+    @Param('id') contractId: string,
+    @Body() dto: CreateContractTerminationDto,
+  ): Promise<TerminationResult> {
+    return this.contractTerminationService.terminate(contractId, dto);
+  }
+
+  @Get(':id/termination')
+  getTermination(
+    @Param('id') contractId: string,
+  ): Promise<TerminationResult | null> {
+    return this.contractTerminationService.findByContract(contractId);
   }
 }
