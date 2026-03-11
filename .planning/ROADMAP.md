@@ -27,7 +27,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. The detail page displays the tenant's full name, phone number, email address, and document/ID number
   3. The route is protected behind `ProtectedRoute` consistent with other app routes
   4. Navigating directly to `/tenants/:id` via URL loads the correct tenant's data
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Add documentId to Tenant entity + DTO and display all personal fields in TenantDashboard
+- [ ] 01-02-PLAN.md — Wire clickable Link navigation on tenant rows in Tenants.tsx
 
 ### Phase 2: Contract + Payment History
 **Goal**: User can see the tenant's active rental contract and every payment they have made
@@ -57,6 +61,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Navigation + Personal Info | 0/TBD | Not started | - |
+| 1. Navigation + Personal Info | 0/2 | Not started | - |
 | 2. Contract + Payment History | 0/TBD | Not started | - |
 | 3. Pending Receipts | 0/TBD | Not started | - |
