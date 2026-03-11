@@ -59,15 +59,15 @@
 | PERS-02 | Phase 1 | Pending |
 | PERS-03 | Phase 1 | Pending |
 | PERS-04 | Phase 1 | Pending |
-| CONT-01 | Phase 1 | Pending |
-| CONT-02 | Phase 1 | Pending |
-| CONT-03 | Phase 1 | Pending |
-| CONT-04 | Phase 1 | Pending |
-| PAY-01 | Phase 1 | Pending |
-| PAY-02 | Phase 1 | Pending |
-| RCPT-01 | Phase 1 | Pending |
-| RCPT-02 | Phase 1 | Pending |
-| RCPT-03 | Phase 1 | Pending |
+| CONT-01 | Phase 2 | Pending |
+| CONT-02 | Phase 2 | Pending |
+| CONT-03 | Phase 2 | Pending |
+| CONT-04 | Phase 2 | Pending |
+| PAY-01 | Phase 2 | Pending |
+| PAY-02 | Phase 2 | Pending |
+| RCPT-01 | Phase 3 | Pending |
+| RCPT-02 | Phase 3 | Pending |
+| RCPT-03 | Phase 3 | Pending |
 
 **Coverage:**
 - v1 requirements: 14 total
@@ -76,4 +76,4 @@
 
 ---
 *Requirements defined: 2026-03-11*
-*Last updated: 2026-03-11 after initial definition*
+*Last updated: 2026-03-11 after roadmap creation*
