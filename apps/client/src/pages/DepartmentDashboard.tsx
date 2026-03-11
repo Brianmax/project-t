@@ -12,6 +12,7 @@ import {
   Receipt,
   Mail,
   Phone,
+  Pencil,
 } from 'lucide-react';
 import { apiFetch, apiPost } from '../lib/api';
 import Spinner from '../components/Spinner';
@@ -91,11 +92,22 @@ export default function DepartmentDashboard() {
 
   // Reading form state
   const [lightValue, setLightValue] = useState('');
-  const [lightDate, setLightDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [waterValue, setWaterValue] = useState('');
-  const [waterDate, setWaterDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [readingDate, setReadingDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [submitting, setSubmitting] = useState(false);
-  const [readingModalType, setReadingModalType] = useState<'light' | 'water' | null>(null);
+  const [readingModalOpen, setReadingModalOpen] = useState(false);
+
+  // Edit reading state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editSubmitting, setEditSubmitting] = useState(false);
+
+  // Add missing reading state
+  const [addMissing, setAddMissing] = useState<{ type: 'light' | 'water'; month: number; year: number } | null>(null);
+  const [addMissingValue, setAddMissingValue] = useState('');
+  const [addMissingDate, setAddMissingDate] = useState('');
+  const [addMissingSubmitting, setAddMissingSubmitting] = useState(false);
 
 
   // ── Fetch data ────────────────────────────────────────
@@ -172,57 +184,36 @@ export default function DepartmentDashboard() {
 
   const lightError =
     lightValue !== '' && lightLastReading !== null && Number(lightValue) < lightLastReading
-      ? `La lectura no puede ser menor a la anterior (${lightLastReading})`
+      ? `Debe ser mayor a la lectura anterior (${lightLastReading})`
       : null;
 
   const waterError =
     waterValue !== '' && waterLastReading !== null && Number(waterValue) < waterLastReading
-      ? `La lectura no puede ser menor a la anterior (${waterLastReading})`
+      ? `Debe ser mayor a la lectura anterior (${waterLastReading})`
       : null;
 
   // ── Submit handlers ───────────────────────────────────
 
-  const submitLightReading = async (e: React.FormEvent) => {
+  const submitReadings = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!lightValue || !lightDate || !lightMeter || lightError) return;
+    if ((!lightValue && !waterValue) || lightError || waterError) return;
     setSubmitting(true);
     try {
-      await apiPost('/meter-readings', {
-        reading: Number(lightValue),
-        date: lightDate,
-        departmentMeterId: lightMeter.id,
-      });
+      const posts: Promise<unknown>[] = [];
+      if (lightMeter && lightValue) {
+        posts.push(apiPost('/meter-readings', { reading: Number(lightValue), date: readingDate, departmentMeterId: lightMeter.id }));
+      }
+      if (waterMeter && waterValue) {
+        posts.push(apiPost('/meter-readings', { reading: Number(waterValue), date: readingDate, departmentMeterId: waterMeter.id }));
+      }
+      await Promise.all(posts);
       setLightValue('');
-      setReadingModalType(null);
-      await fetchData();
-      if (historyLoaded) {
-        await fetchReadingsHistory();
-      }
-    } catch {
-      setError('Error al registrar lectura de luz');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const submitWaterReading = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!waterValue || !waterDate || !waterMeter || waterError) return;
-    setSubmitting(true);
-    try {
-      await apiPost('/meter-readings', {
-        reading: Number(waterValue),
-        date: waterDate,
-        departmentMeterId: waterMeter.id,
-      });
       setWaterValue('');
-      setReadingModalType(null);
+      setReadingModalOpen(false);
       await fetchData();
-      if (historyLoaded) {
-        await fetchReadingsHistory();
-      }
+      if (historyLoaded) await fetchReadingsHistory();
     } catch {
-      setError('Error al registrar lectura de agua');
+      setError('Error al registrar lecturas');
     } finally {
       setSubmitting(false);
     }
@@ -233,16 +224,67 @@ export default function DepartmentDashboard() {
   const formatDate = (d: string) =>
     new Date(d).toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' });
 
-  const openReadingModal = (type: 'light' | 'water') => {
-    setError(null);
-    if (type === 'light') {
-      setLightValue('');
-      setLightDate(new Date().toISOString().slice(0, 10));
-    } else {
-      setWaterValue('');
-      setWaterDate(new Date().toISOString().slice(0, 10));
+  const openEdit = (id: string, value: number, date: string) => {
+    setEditingId(id);
+    setEditValue(String(value));
+    setEditDate(date.slice(0, 10));
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingId) return;
+    setEditSubmitting(true);
+    try {
+      await apiFetch(`/meter-readings/${editingId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ reading: Number(editValue), date: editDate }),
+      });
+      setEditingId(null);
+      await fetchReadingsHistory();
+      await fetchData();
+    } catch {
+      setError('Error al actualizar la lectura');
+    } finally {
+      setEditSubmitting(false);
     }
-    setReadingModalType(type);
+  };
+
+  const openAddMissing = (type: 'light' | 'water', month: number, year: number) => {
+    // month is 0-indexed; pre-fill date to last day of that month
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    setAddMissingDate(`${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
+    setAddMissingValue('');
+    setAddMissing({ type, month, year });
+  };
+
+  const handleAddMissingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addMissing || !addMissingValue) return;
+    const meter = addMissing.type === 'light' ? lightMeter : waterMeter;
+    if (!meter) return;
+    setAddMissingSubmitting(true);
+    try {
+      await apiPost('/meter-readings', {
+        reading: Number(addMissingValue),
+        date: addMissingDate,
+        departmentMeterId: meter.id,
+      });
+      setAddMissing(null);
+      await fetchReadingsHistory();
+      await fetchData();
+    } catch {
+      setError('Error al agregar lectura');
+    } finally {
+      setAddMissingSubmitting(false);
+    }
+  };
+
+  const openReadingModal = () => {
+    setError(null);
+    setLightValue('');
+    setWaterValue('');
+    setReadingDate(new Date().toISOString().slice(0, 10));
+    setReadingModalOpen(true);
   };
   const handleBillingClick = () => {
     navigate(`/departments/${departmentId}/billing`);
@@ -274,6 +316,8 @@ export default function DepartmentDashboard() {
       water: number | null;
       lightDate: string | null;
       waterDate: string | null;
+      lightId: string | null;
+      waterId: string | null;
     };
     const rows = new Map<string, Row>();
     for (const reading of readings) {
@@ -312,17 +356,21 @@ export default function DepartmentDashboard() {
         water: null,
         lightDate: null,
         waterDate: null,
+        lightId: null as string | null,
+        waterId: null as string | null,
       };
 
       if (meterType === 'light') {
         if (!row.lightDate || rawDate > row.lightDate) {
           row.light = Number(reading.reading);
           row.lightDate = rawDate;
+          row.lightId = reading.id;
         }
       } else if (meterType === 'water') {
         if (!row.waterDate || rawDate > row.waterDate) {
           row.water = Number(reading.reading);
           row.waterDate = rawDate;
+          row.waterId = reading.id;
         }
       }
 
@@ -426,27 +474,27 @@ export default function DepartmentDashboard() {
       )}
 
       {/* Consumption Cards */}
-      <h2 className="text-lg font-semibold text-on-surface-strong mb-3">Consumo Actual</h2>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <h2 className="text-lg font-semibold text-on-surface-strong">Consumo Actual</h2>
+        {(lightMeter || waterMeter) && (
+          <button
+            type="button"
+            onClick={openReadingModal}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-surface-raised text-on-surface-medium hover:text-on-surface-strong transition-all duration-150"
+          >
+            <Plus size={14} />
+            Nueva Lectura
+          </button>
+        )}
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
         {/* Light */}
         <div className="bg-surface rounded-2xl border border-border p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-100 dark:ring-amber-800/40 flex items-center justify-center">
-                <Zap size={18} className="text-amber-600 dark:text-amber-400" />
-              </div>
-              <h3 className="font-semibold text-on-surface">Luz</h3>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-100 dark:ring-amber-800/40 flex items-center justify-center">
+              <Zap size={18} className="text-amber-600 dark:text-amber-400" />
             </div>
-            <button
-              type="button"
-              onClick={() => openReadingModal('light')}
-              disabled={!lightMeter}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50 disabled:bg-surface-raised disabled:text-on-surface-faint disabled:cursor-not-allowed transition-all duration-150"
-              title={lightMeter ? 'Agregar lectura de luz' : 'No hay medidor de luz'}
-            >
-              <Plus size={14} />
-              Lectura
-            </button>
+            <h3 className="font-semibold text-on-surface">Luz</h3>
           </div>
           {consumption && consumption.light.prevReading !== null ? (
             <div className="space-y-1 text-sm">
@@ -470,23 +518,11 @@ export default function DepartmentDashboard() {
 
         {/* Water */}
         <div className="bg-surface rounded-2xl border border-border p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/40 ring-1 ring-blue-100 dark:ring-blue-800/40 flex items-center justify-center">
-                <Droplets size={18} className="text-blue-600 dark:text-blue-400" />
-              </div>
-              <h3 className="font-semibold text-on-surface">Agua</h3>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/40 ring-1 ring-blue-100 dark:ring-blue-800/40 flex items-center justify-center">
+              <Droplets size={18} className="text-blue-600 dark:text-blue-400" />
             </div>
-            <button
-              type="button"
-              onClick={() => openReadingModal('water')}
-              disabled={!waterMeter}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 disabled:bg-surface-raised disabled:text-on-surface-faint disabled:cursor-not-allowed transition-all duration-150"
-              title={waterMeter ? 'Agregar lectura de agua' : 'No hay medidor de agua'}
-            >
-              <Plus size={14} />
-              Lectura
-            </button>
+            <h3 className="font-semibold text-on-surface">Agua</h3>
           </div>
           {consumption && consumption.water.prevReading !== null ? (
             <div className="space-y-1 text-sm">
@@ -551,11 +587,49 @@ export default function DepartmentDashboard() {
                     <td className="px-5 py-3.5 text-on-surface-medium">
                       {monthNames[row.month]} {row.year}
                     </td>
-                    <td className="px-5 py-3.5 text-right font-semibold text-on-surface">
-                      {row.light !== null ? row.light : '-'}
+                    <td className="px-5 py-3.5 text-right">
+                      {row.light !== null ? (
+                        <span className="inline-flex items-center justify-end gap-2">
+                          <span className="font-semibold text-on-surface">{row.light}</span>
+                          <button
+                            onClick={() => openEdit(row.lightId!, row.light!, row.lightDate!)}
+                            className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-surface-raised hover:bg-surface-alt text-on-surface-medium hover:text-on-surface-strong transition-colors"
+                            title="Editar lectura de luz"
+                          >
+                            <Pencil size={11} />
+                          </button>
+                        </span>
+                      ) : lightMeter ? (
+                        <button
+                          onClick={() => openAddMissing('light', row.month, row.year)}
+                          className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-surface-raised hover:bg-surface-alt text-on-surface-medium hover:text-on-surface-strong transition-colors"
+                          title="Agregar lectura de luz"
+                        >
+                          <Plus size={11} />
+                        </button>
+                      ) : '-'}
                     </td>
-                    <td className="px-5 py-3.5 text-right font-semibold text-on-surface">
-                      {row.water !== null ? row.water : '-'}
+                    <td className="px-5 py-3.5 text-right">
+                      {row.water !== null ? (
+                        <span className="inline-flex items-center justify-end gap-2">
+                          <span className="font-semibold text-on-surface">{row.water}</span>
+                          <button
+                            onClick={() => openEdit(row.waterId!, row.water!, row.waterDate!)}
+                            className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-surface-raised hover:bg-surface-alt text-on-surface-medium hover:text-on-surface-strong transition-colors"
+                            title="Editar lectura de agua"
+                          >
+                            <Pencil size={11} />
+                          </button>
+                        </span>
+                      ) : waterMeter ? (
+                        <button
+                          onClick={() => openAddMissing('water', row.month, row.year)}
+                          className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-surface-raised hover:bg-surface-alt text-on-surface-medium hover:text-on-surface-strong transition-colors"
+                          title="Agregar lectura de agua"
+                        >
+                          <Plus size={11} />
+                        </button>
+                      ) : '-'}
                     </td>
                   </tr>
                 ))}
@@ -565,72 +639,127 @@ export default function DepartmentDashboard() {
         )
       )}
 
-      <Modal
-        isOpen={readingModalType !== null}
-        onClose={() => setReadingModalType(null)}
-        title={readingModalType === 'water' ? 'Nueva Lectura de Agua' : 'Nueva Lectura de Luz'}
-      >
-        {readingModalType === 'light' ? (
-          <form onSubmit={submitLightReading} className="space-y-3">
-            <p className="text-[13px] text-on-surface-muted">
-              Lectura anterior: {lightLastReading !== null ? lightLastReading : 'N/A'}
-            </p>
+      <Modal isOpen={readingModalOpen} onClose={() => setReadingModalOpen(false)} title="Registrar Lecturas">
+        <form onSubmit={submitReadings} className="space-y-4">
+          <div>
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+              <Calendar size={12} className="inline mr-1" />
+              Fecha
+            </label>
+            <DatePicker value={readingDate} onChange={setReadingDate} required />
+          </div>
+
+          {lightMeter && (
             <div>
+              <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5 flex items-center gap-1.5">
+                <Zap size={13} className="text-amber-500" /> Luz
+                {lightLastReading !== null && (
+                  <span className="font-normal text-on-surface-muted">— anterior: {lightLastReading}</span>
+                )}
+              </label>
               <input
                 type="number"
                 step="any"
                 value={lightValue}
                 onChange={(e) => setLightValue(e.target.value)}
                 placeholder="Nueva lectura"
-                required
                 className={inputCls}
               />
-              {lightError && (
-                <p className="text-xs text-red-600 dark:text-red-400 mt-1">{lightError}</p>
-              )}
+              {lightError && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{lightError}</p>}
             </div>
+          )}
+
+          {waterMeter && (
             <div>
-              <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
-                <Calendar size={12} className="inline mr-1" />
-                Fecha
+              <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5 flex items-center gap-1.5">
+                <Droplets size={13} className="text-blue-500" /> Agua
+                {waterLastReading !== null && (
+                  <span className="font-normal text-on-surface-muted">— anterior: {waterLastReading}</span>
+                )}
               </label>
-              <DatePicker value={lightDate} onChange={setLightDate} required />
-            </div>
-            <button type="submit" disabled={submitting || !!lightError || !lightValue} className={btnCls}>
-              {submitting ? 'Guardando...' : 'Registrar Lectura'}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={submitWaterReading} className="space-y-3">
-            <p className="text-[13px] text-on-surface-muted">
-              Lectura anterior: {waterLastReading !== null ? waterLastReading : 'N/A'}
-            </p>
-            <div>
               <input
                 type="number"
                 step="any"
                 value={waterValue}
                 onChange={(e) => setWaterValue(e.target.value)}
                 placeholder="Nueva lectura"
-                required
                 className={inputCls}
               />
-              {waterError && (
-                <p className="text-xs text-red-600 dark:text-red-400 mt-1">{waterError}</p>
-              )}
+              {waterError && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{waterError}</p>}
             </div>
-            <div>
-              <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
-                <Calendar size={12} className="inline mr-1" />
-                Fecha
-              </label>
-              <DatePicker value={waterDate} onChange={setWaterDate} required />
-            </div>
-            <button type="submit" disabled={submitting || !!waterError || !waterValue} className={btnCls}>
-              {submitting ? 'Guardando...' : 'Registrar Lectura'}
-            </button>
-          </form>
-        )}
+          )}
+
+          <button
+            type="submit"
+            disabled={submitting || !!lightError || !!waterError || (!lightValue && !waterValue)}
+            className={btnCls}
+          >
+            {submitting ? 'Guardando...' : 'Registrar Lecturas'}
+          </button>
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={!!addMissing}
+        onClose={() => setAddMissing(null)}
+        title={addMissing?.type === 'light' ? 'Agregar Lectura de Luz' : 'Agregar Lectura de Agua'}
+      >
+        <form onSubmit={handleAddMissingSubmit} className="space-y-4">
+          <div className="flex items-center gap-2 text-[13px] text-on-surface-muted">
+            {addMissing?.type === 'light'
+              ? <><Zap size={13} className="text-amber-500" /> Lectura anterior: {lightLastReading ?? 'N/A'}</>
+              : <><Droplets size={13} className="text-blue-500" /> Lectura anterior: {waterLastReading ?? 'N/A'}</>
+            }
+          </div>
+          <div>
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Valor</label>
+            <input
+              type="number"
+              step="any"
+              value={addMissingValue}
+              onChange={(e) => setAddMissingValue(e.target.value)}
+              placeholder="Nueva lectura"
+              required
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+              <Calendar size={12} className="inline mr-1" />
+              Fecha
+            </label>
+            <DatePicker value={addMissingDate} onChange={setAddMissingDate} required />
+          </div>
+          <button type="submit" disabled={addMissingSubmitting || !addMissingValue} className={btnCls}>
+            {addMissingSubmitting ? 'Guardando...' : 'Guardar Lectura'}
+          </button>
+        </form>
+      </Modal>
+
+      <Modal isOpen={!!editingId} onClose={() => setEditingId(null)} title="Editar Lectura">
+        <form onSubmit={handleEditSubmit} className="space-y-4">
+          <div>
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Valor</label>
+            <input
+              type="number"
+              step="any"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              required
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+              <Calendar size={12} className="inline mr-1" />
+              Fecha
+            </label>
+            <DatePicker value={editDate} onChange={setEditDate} required />
+          </div>
+          <button type="submit" disabled={editSubmitting} className={btnCls}>
+            {editSubmitting ? 'Guardando...' : 'Guardar cambios'}
+          </button>
+        </form>
       </Modal>
     </div>
   );

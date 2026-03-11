@@ -166,6 +166,7 @@ Created when a contract is formally closed. Stores the audit record and financia
 | guaranteeDeposit | decimal | Snapshot of `contract.guaranteeDeposit` |
 | guaranteeDeduction | decimal | User-entered; damages, cleaning, overdue, etc. |
 | guaranteeReturn | decimal | `max(0, guaranteeDeposit - guaranteeDeduction)` |
+| rentRefund | decimal | `max(0, rentAmount - proratedRentAmount)`; 0 if rent was not prorated |
 
 Terminating a contract sets `contract.status = 'terminated'` and `department.isAvailable = true`.
 

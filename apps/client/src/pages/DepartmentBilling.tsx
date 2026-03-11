@@ -101,7 +101,9 @@ interface TerminationResult {
   advanceApplied: number;
   guaranteeDeposit: number;
   guaranteeDeduction: number;
+  servicesCost: number;
   guaranteeReturn: number;
+  rentRefund: number;
   createdAt: string;
 }
 
@@ -355,6 +357,8 @@ export default function DepartmentBilling() {
             actualDepartureDate,
             apartmentCondition: apartmentCondition || undefined,
             guaranteeDeduction: Number(guaranteeDeduction) || 0,
+            servicesCost: lightCost + waterCost + extraTotal,
+            ...(prorateRent && departureDay ? { proratedRentAmount: rentAmount } : {}),
           }),
         },
       );
@@ -435,10 +439,18 @@ export default function DepartmentBilling() {
   );
   const total = rentAmount + lightCost + waterCost + extraTotal;
 
-  // Guarantee return preview (computed from form inputs, not yet saved)
+  // Settlement preview (computed from form inputs, not yet saved)
   const guaranteeDepositAmt = contract ? Number(contract.guaranteeDeposit) : 0;
   const guaranteeDeductionAmt = Number(guaranteeDeduction) || 0;
-  const guaranteeReturnPreview = Math.max(0, guaranteeDepositAmt - guaranteeDeductionAmt);
+  const servicesCostPreview = lightCost + waterCost + extraTotal;
+  const rentRefundRawPreview =
+    prorateRent && departureDay ? Math.max(0, fullRent - rentAmount) : 0;
+  const servicesFromGuaranteePreview = Math.max(0, servicesCostPreview - rentRefundRawPreview);
+  const rentRefundPreview = Math.max(0, rentRefundRawPreview - servicesCostPreview);
+  const guaranteeReturnPreview = Math.max(
+    0,
+    guaranteeDepositAmt - guaranteeDeductionAmt - servicesFromGuaranteePreview,
+  );
 
   // ── Style helpers ─────────────────────────────────────
 
@@ -629,10 +641,26 @@ export default function DepartmentBilling() {
                   <span className="text-on-surface font-medium">S/ {Number(termination.guaranteeDeposit).toFixed(2)}</span>
                   <span className="text-on-surface-medium">Deduccion</span>
                   <span className="text-on-surface font-medium">S/ {Number(termination.guaranteeDeduction).toFixed(2)}</span>
-                  <span className="text-on-surface-medium font-semibold">A devolver</span>
+                  {Number(termination.servicesCost) > 0 && (
+                    <>
+                      <span className="text-on-surface-medium">Servicios del mes</span>
+                      <span className="font-medium text-red-600 dark:text-red-400">
+                        − S/ {Number(termination.servicesCost).toFixed(2)}
+                      </span>
+                    </>
+                  )}
+                  <span className="text-on-surface-medium font-semibold">A devolver (garantia)</span>
                   <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
                     S/ {Number(termination.guaranteeReturn).toFixed(2)}
                   </span>
+                  {Number(termination.rentRefund) > 0 && (
+                    <>
+                      <span className="text-on-surface-medium font-semibold">Devolucion alquiler</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                        S/ {Number(termination.rentRefund).toFixed(2)}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             ) : (
@@ -681,12 +709,35 @@ export default function DepartmentBilling() {
                       className={inputCls + ' max-w-[120px] text-right'}
                     />
                   </div>
+                  {servicesCostPreview > 0 && (
+                    <div className="flex justify-between text-[13px]">
+                      <span className="text-on-surface-medium">
+                        Servicios del mes
+                        {rentRefundRawPreview > 0
+                          ? servicesFromGuaranteePreview > 0
+                            ? ' (alq. + garantia)'
+                            : ' (de devol. alquiler)'
+                          : ' (de garantia)'}
+                      </span>
+                      <span className="font-medium text-red-600 dark:text-red-400">
+                        − S/ {servicesCostPreview.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-[13px] font-semibold border-t border-border pt-2">
-                    <span className="text-on-surface-medium">A devolver</span>
+                    <span className="text-on-surface-medium">A devolver (garantia)</span>
                     <span className="text-emerald-600 dark:text-emerald-400">
                       S/ {guaranteeReturnPreview.toFixed(2)}
                     </span>
                   </div>
+                  {rentRefundPreview > 0 && (
+                    <div className="flex justify-between text-[13px] font-semibold">
+                      <span className="text-on-surface-medium">Devolucion alquiler</span>
+                      <span className="text-emerald-600 dark:text-emerald-400">
+                        S/ {rentRefundPreview.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-[13px] pt-1">
                     <span className="text-on-surface-medium">Adelanto aplicado</span>
                     <span className="font-medium text-on-surface">

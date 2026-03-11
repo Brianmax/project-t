@@ -41,6 +41,12 @@ export class ContractTermination {
   @Column({ type: 'decimal', precision: 10, scale: 2, name: 'guarantee_return' })
   guaranteeReturn: number;
 
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, name: 'services_cost' })
+  servicesCost: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, name: 'rent_refund' })
+  rentRefund: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

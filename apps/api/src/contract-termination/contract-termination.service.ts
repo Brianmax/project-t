@@ -21,7 +21,9 @@ export interface TerminationResult {
   advanceApplied: number;
   guaranteeDeposit: number;
   guaranteeDeduction: number;
+  servicesCost: number;
   guaranteeReturn: number;
+  rentRefund: number;
   createdAt: Date;
 }
 
@@ -58,7 +60,17 @@ export class ContractTerminationService {
     const advanceApplied = Number(contract.advancePayment);
     const guaranteeDeposit = Number(contract.guaranteeDeposit);
     const guaranteeDeduction = Number(dto.guaranteeDeduction) || 0;
-    const guaranteeReturn = Math.max(0, guaranteeDeposit - guaranteeDeduction);
+    const servicesCost = Number(dto.servicesCost) || 0;
+
+    const rentRefundRaw =
+      dto.proratedRentAmount != null
+        ? Math.max(0, Number(contract.rentAmount) - dto.proratedRentAmount)
+        : 0;
+
+    // Services are absorbed by the rent refund first, then the remainder hits the guarantee
+    const servicesFromGuarantee = Math.max(0, servicesCost - rentRefundRaw);
+    const rentRefund = Math.max(0, rentRefundRaw - servicesCost);
+    const guaranteeReturn = Math.max(0, guaranteeDeposit - guaranteeDeduction - servicesFromGuarantee);
 
     const termination = this.terminationRepository.create({
       contractId,
@@ -68,7 +80,9 @@ export class ContractTerminationService {
       advanceApplied,
       guaranteeDeposit,
       guaranteeDeduction,
+      servicesCost,
       guaranteeReturn,
+      rentRefund,
     });
 
     const saved = await this.terminationRepository.save(termination);
@@ -109,7 +123,9 @@ export class ContractTerminationService {
       advanceApplied: Number(termination.advanceApplied),
       guaranteeDeposit: Number(termination.guaranteeDeposit),
       guaranteeDeduction: Number(termination.guaranteeDeduction),
+      servicesCost: Number(termination.servicesCost),
       guaranteeReturn: Number(termination.guaranteeReturn),
+      rentRefund: Number(termination.rentRefund),
       createdAt: termination.createdAt,
     };
   }
