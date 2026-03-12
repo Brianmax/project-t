@@ -11,10 +11,10 @@
 
 ### Personal Info
 
-- [ ] **PERS-01**: Tenant detail page displays tenant's full name
-- [ ] **PERS-02**: Tenant detail page displays tenant's phone number
-- [ ] **PERS-03**: Tenant detail page displays tenant's email address
-- [ ] **PERS-04**: Tenant detail page displays tenant's document/ID number
+- [x] **PERS-01**: Tenant detail page displays tenant's full name
+- [x] **PERS-02**: Tenant detail page displays tenant's phone number
+- [x] **PERS-03**: Tenant detail page displays tenant's email address
+- [x] **PERS-04**: Tenant detail page displays tenant's document/ID number
 
 ### Contract
 
@@ -55,10 +55,10 @@
 | Requirement | Phase | Status |
 |---|---|---|
 | NAV-01 | Phase 1 | Pending |
-| PERS-01 | Phase 1 | Pending |
-| PERS-02 | Phase 1 | Pending |
-| PERS-03 | Phase 1 | Pending |
-| PERS-04 | Phase 1 | Pending |
+| PERS-01 | Phase 1 | Complete |
+| PERS-02 | Phase 1 | Complete |
+| PERS-03 | Phase 1 | Complete |
+| PERS-04 | Phase 1 | Complete |
 | CONT-01 | Phase 2 | Pending |
 | CONT-02 | Phase 2 | Pending |
 | CONT-03 | Phase 2 | Pending |
