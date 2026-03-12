@@ -128,7 +128,7 @@ export class ReceiptService {
   async findPendingReceipts(): Promise<Receipt[]> {
     const receipts = await this.receiptRepository.find({
       where: {
-        status: ReceiptStatus.APPROVED,
+        status: ReceiptStatus.PENDING_REVIEW,
       },
       order: {
         year: 'DESC',
@@ -136,10 +136,7 @@ export class ReceiptService {
       },
     });
 
-    // Filter receipts with negative balance (amount owed)
-    return receipts
-      .map((r) => this.toReceipt(r))
-      .filter((r) => r.balance < 0);
+    return receipts.map((r) => this.toReceipt(r));
   }
 
   private toReceipt(record: ReceiptEntity): Receipt {
