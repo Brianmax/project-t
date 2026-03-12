@@ -7,7 +7,7 @@
 
 ### Navigation
 
-- [ ] **NAV-01**: User can click a tenant card in `/tenants` and navigate to `/tenants/:id`
+- [x] **NAV-01**: User can click a tenant card in `/tenants` and navigate to `/tenants/:id`
 
 ### Personal Info
 
@@ -54,7 +54,7 @@
 
 | Requirement | Phase | Status |
 |---|---|---|
-| NAV-01 | Phase 1 | Pending |
+| NAV-01 | Phase 1 | Complete |
 | PERS-01 | Phase 1 | Complete |
 | PERS-02 | Phase 1 | Complete |
 | PERS-03 | Phase 1 | Complete |

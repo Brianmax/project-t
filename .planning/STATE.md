@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 01-navigation-personal-info-01-PLAN.md
-last_updated: "2026-03-12T04:12:15.523Z"
+stopped_at: Completed 01-navigation-personal-info-02-PLAN.md
+last_updated: "2026-03-12T04:21:13.284Z"
 last_activity: 2026-03-11 — Roadmap created
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
   percent: 50
 ---
 
@@ -51,6 +51,7 @@ Progress: [█████░░░░░] 50%
 
 *Updated after each plan completion*
 | Phase 01-navigation-personal-info P01 | 2 | 2 tasks | 4 files |
+| Phase 01-navigation-personal-info P02 | 5 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,7 @@ Recent decisions affecting current work:
 - Only `pending_review` receipts shown — reduces noise
 - [Phase 01-navigation-personal-info]: documentId column nullable: true for zero-downtime migration of existing tenant rows
 - [Phase 01-navigation-personal-info]: documentId conditionally rendered in TenantDashboard header matching phone display pattern
+- [Phase 01-navigation-personal-info]: Table row navigation: wrap name cell with React Router Link (not full row) to keep valid HTML
 
 ### Pending Todos
 
@@ -76,6 +78,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-12T04:12:15.521Z
-Stopped at: Completed 01-navigation-personal-info-01-PLAN.md
+Last session: 2026-03-12T04:21:13.283Z
+Stopped at: Completed 01-navigation-personal-info-02-PLAN.md
 Resume file: None

@@ -12,7 +12,7 @@ This milestone delivers a tenant detail page at `/tenants/:id`. Starting from cl
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Navigation + Personal Info** - Clickable tenant cards navigate to a detail page showing personal data
+- [x] **Phase 1: Navigation + Personal Info** - Clickable tenant cards navigate to a detail page showing personal data (completed 2026-03-12)
 - [ ] **Phase 2: Contract + Payment History** - Detail page shows active contract details and full payment history
 - [ ] **Phase 3: Pending Receipts** - Detail page shows a view-only section of pending billing receipts
 
@@ -61,6 +61,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Navigation + Personal Info | 1/2 | In Progress|  |
+| 1. Navigation + Personal Info | 2/2 | Complete   | 2026-03-12 |
 | 2. Contract + Payment History | 0/TBD | Not started | - |
 | 3. Pending Receipts | 0/TBD | Not started | - |
