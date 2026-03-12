@@ -30,8 +30,8 @@
 
 ### Pending Receipts
 
-- [ ] **RCPT-01**: Tenant detail page displays a section listing receipts with `pending_review` status
-- [ ] **RCPT-02**: Each pending receipt entry shows the billing period (month/year) and total amount
+- [x] **RCPT-01**: Tenant detail page displays a section listing receipts with `pending_review` status
+- [x] **RCPT-02**: Each pending receipt entry shows the billing period (month/year) and total amount
 - [ ] **RCPT-03**: If no pending receipts exist, the section shows an empty state message
 
 ## v2 Requirements
@@ -65,8 +65,8 @@
 | CONT-04 | Phase 2 | Complete |
 | PAY-01 | Phase 2 | Complete |
 | PAY-02 | Phase 2 | Complete |
-| RCPT-01 | Phase 3 | Pending |
-| RCPT-02 | Phase 3 | Pending |
+| RCPT-01 | Phase 3 | Complete |
+| RCPT-02 | Phase 3 | Complete |
 | RCPT-03 | Phase 3 | Pending |
 
 **Coverage:**
