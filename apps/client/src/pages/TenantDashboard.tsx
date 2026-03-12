@@ -328,7 +328,11 @@ export default function TenantDashboard() {
                         </h2>
 
                         {payments.length === 0 ? (
-                            <p className="text-sm text-on-surface-muted italic">No hay pagos registrados.</p>
+                            <EmptyState
+                                icon={CreditCard}
+                                title="Sin pagos registrados"
+                                description="No hay pagos registrados para este contrato."
+                            />
                         ) : (
                             <div className="bg-surface rounded-2xl border border-border overflow-hidden shadow-sm">
                                 <div className="divide-y divide-border-light">
