@@ -11,7 +11,8 @@ import {
     CreditCard,
     Building2,
     Clock,
-    AlertCircle
+    AlertCircle,
+    IdCard
 } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import Spinner from '../components/Spinner';
@@ -24,6 +25,7 @@ interface Tenant {
     name: string;
     email: string;
     phone?: string;
+    documentId?: string;
 }
 
 interface Contract {
@@ -152,6 +154,12 @@ export default function TenantDashboard() {
                             <div className="flex items-center gap-1.5">
                                 <Phone size={13} />
                                 {tenant.phone}
+                            </div>
+                        )}
+                        {tenant.documentId && (
+                            <div className="flex items-center gap-1.5">
+                                <IdCard size={13} />
+                                {tenant.documentId}
                             </div>
                         )}
                     </div>
