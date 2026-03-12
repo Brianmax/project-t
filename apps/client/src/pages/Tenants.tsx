@@ -238,12 +238,12 @@ export default function Tenants() {
               {tenants.map((t) => (
                 <tr key={t.id} className="border-b border-border-light last:border-0 hover:bg-surface-alt/50 transition-colors">
                   <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-3">
+                    <Link to={`/tenants/${t.id}`} className="flex items-center gap-3 hover:underline">
                       <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-100 dark:from-emerald-900/40 to-emerald-50 dark:to-emerald-950/30 flex items-center justify-center text-emerald-700 dark:text-emerald-300 font-semibold text-xs ring-1 ring-emerald-200/50 dark:ring-emerald-700/40">
                         {t.name.charAt(0).toUpperCase()}
                       </div>
                       <span className="font-medium text-on-surface">{t.name}</span>
-                    </div>
+                    </Link>
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-1.5 text-on-surface-medium">
