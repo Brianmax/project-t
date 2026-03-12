@@ -12,4 +12,8 @@ export class CreateTenantDto {
   @IsString()
   @IsOptional()
   phone?: string;
+
+  @IsString()
+  @IsOptional()
+  documentId?: string;
 }

@@ -13,4 +13,7 @@ export class Tenant {
 
   @Column({ nullable: true })
   phone: string;
+
+  @Column({ nullable: true })
+  documentId: string;
 }
