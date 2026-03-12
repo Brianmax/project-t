@@ -41,7 +41,12 @@ Plans:
   1. The detail page shows the property name, department name/number, monthly rent, and contract start/end dates
   2. The detail page shows a list of all payments on the contract, each with its amount and date
   3. If no payments exist, the payments section shows an empty state rather than a blank area
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Create failing unit test scaffolds for ContractService (tenantId filter + department.property) and PaymentService (findByContract)
+- [ ] 02-02-PLAN.md — Add tenantId filter + department.property relation to contracts API; add contractId filter to payments API
+- [ ] 02-03-PLAN.md — Update TenantDashboard.tsx to use targeted API calls and EmptyState for no-payments case
 
 ### Phase 3: Pending Receipts
 **Goal**: User can see all outstanding billing receipts that are awaiting review for this tenant
@@ -62,5 +67,5 @@ Phases execute in numeric order: 1 → 2 → 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Navigation + Personal Info | 2/2 | Complete    | 2026-03-12 |
-| 2. Contract + Payment History | 0/TBD | Not started | - |
+| 2. Contract + Payment History | 0/3 | Not started | - |
 | 3. Pending Receipts | 0/TBD | Not started | - |
