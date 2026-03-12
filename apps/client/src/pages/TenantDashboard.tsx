@@ -228,68 +228,76 @@ export default function TenantDashboard() {
                     </section>
 
                     {/* Pending Receipts */}
-                    {pendingReceipts.length > 0 && (
-                        <section>
-                            <h2 className="text-lg font-semibold text-on-surface-strong mb-3 flex items-center gap-2">
-                                <AlertCircle size={19} className="text-amber-600 dark:text-amber-400" />
-                                Recibos Pendientes de Pago
-                            </h2>
-                            <div className="space-y-3">
-                                {pendingReceipts.map((receipt) => (
-                                    <div
-                                        key={receipt.id}
-                                        className="bg-surface rounded-xl border border-amber-200/80 dark:border-amber-700/40 p-4 shadow-sm hover:shadow-md transition-all duration-200"
-                                    >
-                                        <div className="flex justify-between items-start mb-3">
-                                            <div>
-                                                <h3 className="font-semibold text-on-surface mb-1">{receipt.period}</h3>
-                                                <p className="text-sm text-on-surface-medium">
-                                                    {receipt.departmentName}
-                                                </p>
-                                            </div>
-                                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200/50 dark:ring-amber-700/40">
-                                                Pendiente
-                                            </span>
-                                        </div>
-
-                                        <div className="grid grid-cols-3 gap-2 text-sm mb-3">
-                                            <div className="bg-surface-alt/80 rounded-lg p-2 ring-1 ring-border-ring">
-                                                <p className="text-on-surface-muted text-[11px] mb-0.5">Total</p>
-                                                <p className="font-medium text-on-surface">S/ {receipt.totalDue.toFixed(2)}</p>
-                                            </div>
-                                            <div className="bg-surface-alt/80 rounded-lg p-2 ring-1 ring-border-ring">
-                                                <p className="text-on-surface-muted text-[11px] mb-0.5">Pagado</p>
-                                                <p className="font-medium text-emerald-600 dark:text-emerald-400">S/ {receipt.totalPayments.toFixed(2)}</p>
-                                            </div>
-                                            <div className="bg-red-50 dark:bg-red-950/40 rounded-lg p-2 ring-1 ring-red-200/50 dark:ring-red-700/40">
-                                                <p className="text-red-700 dark:text-red-300 text-[11px] mb-0.5">Debe</p>
-                                                <p className="font-bold text-red-600 dark:text-red-400">S/ {Math.abs(receipt.balance).toFixed(2)}</p>
-                                            </div>
-                                        </div>
-
-                                        <Link
-                                            to={`/departments/${receipt.contractId}/billing`}
-                                            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors"
+                    <section>
+                        <h2 className="text-lg font-semibold text-on-surface-strong mb-3 flex items-center gap-2">
+                            <AlertCircle size={19} className="text-amber-600 dark:text-amber-400" />
+                            Recibos Pendientes de Pago
+                        </h2>
+                        {pendingReceipts.length === 0 ? (
+                            <EmptyState
+                                icon={AlertCircle}
+                                title="Sin recibos pendientes"
+                                description="No hay recibos pendientes de revisión para este inquilino."
+                            />
+                        ) : (
+                            <>
+                                <div className="space-y-3">
+                                    {pendingReceipts.map((receipt) => (
+                                        <div
+                                            key={receipt.id}
+                                            className="bg-surface rounded-xl border border-amber-200/80 dark:border-amber-700/40 p-4 shadow-sm hover:shadow-md transition-all duration-200"
                                         >
-                                            Ver detalles y pagar
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                            </svg>
-                                        </Link>
-                                    </div>
-                                ))}
-                            </div>
+                                            <div className="flex justify-between items-start mb-3">
+                                                <div>
+                                                    <h3 className="font-semibold text-on-surface mb-1">{receipt.period}</h3>
+                                                    <p className="text-sm text-on-surface-medium">
+                                                        {receipt.departmentName}
+                                                    </p>
+                                                </div>
+                                                <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200/50 dark:ring-amber-700/40">
+                                                    Pendiente
+                                                </span>
+                                            </div>
 
-                            <div className="mt-3 p-4 bg-red-50 dark:bg-red-950/30 rounded-xl border border-red-200/60 dark:border-red-700/40">
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm font-semibold text-on-surface">Total Adeudado:</span>
-                                    <span className="text-xl font-bold text-red-600 dark:text-red-400">
-                                        S/ {pendingReceipts.reduce((sum, r) => sum + Math.abs(r.balance), 0).toFixed(2)}
-                                    </span>
+                                            <div className="grid grid-cols-3 gap-2 text-sm mb-3">
+                                                <div className="bg-surface-alt/80 rounded-lg p-2 ring-1 ring-border-ring">
+                                                    <p className="text-on-surface-muted text-[11px] mb-0.5">Total</p>
+                                                    <p className="font-medium text-on-surface">S/ {receipt.totalDue.toFixed(2)}</p>
+                                                </div>
+                                                <div className="bg-surface-alt/80 rounded-lg p-2 ring-1 ring-border-ring">
+                                                    <p className="text-on-surface-muted text-[11px] mb-0.5">Pagado</p>
+                                                    <p className="font-medium text-emerald-600 dark:text-emerald-400">S/ {receipt.totalPayments.toFixed(2)}</p>
+                                                </div>
+                                                <div className="bg-red-50 dark:bg-red-950/40 rounded-lg p-2 ring-1 ring-red-200/50 dark:ring-red-700/40">
+                                                    <p className="text-red-700 dark:text-red-300 text-[11px] mb-0.5">Debe</p>
+                                                    <p className="font-bold text-red-600 dark:text-red-400">S/ {Math.abs(receipt.balance).toFixed(2)}</p>
+                                                </div>
+                                            </div>
+
+                                            <Link
+                                                to={`/departments/${receipt.contractId}/billing`}
+                                                className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors"
+                                            >
+                                                Ver detalles y pagar
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                                </svg>
+                                            </Link>
+                                        </div>
+                                    ))}
                                 </div>
-                            </div>
-                        </section>
-                    )}
+
+                                <div className="mt-3 p-4 bg-red-50 dark:bg-red-950/30 rounded-xl border border-red-200/60 dark:border-red-700/40">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm font-semibold text-on-surface">Total Adeudado:</span>
+                                        <span className="text-xl font-bold text-red-600 dark:text-red-400">
+                                            S/ {pendingReceipts.reduce((sum, r) => sum + Math.abs(r.balance), 0).toFixed(2)}
+                                        </span>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </section>
 
                     {/* Contract History */}
                     {pastContracts.length > 0 && (
