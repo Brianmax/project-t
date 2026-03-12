@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -23,7 +24,10 @@ export class PaymentController {
   }
 
   @Get()
-  findAll() {
+  findAll(@Query('contractId') contractId?: string) {
+    if (contractId) {
+      return this.paymentService.findByContract(contractId);
+    }
     return this.paymentService.findAll();
   }
 

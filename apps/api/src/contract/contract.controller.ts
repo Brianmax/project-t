@@ -47,8 +47,11 @@ export class ContractController {
   }
 
   @Get()
-  findAll(@Query('departmentId') departmentId?: string) {
-    return this.contractService.findAll(departmentId);
+  findAll(
+    @Query('tenantId') tenantId?: string,
+    @Query('departmentId') departmentId?: string,
+  ) {
+    return this.contractService.findAll(tenantId, departmentId);
   }
 
   @Get(':id')

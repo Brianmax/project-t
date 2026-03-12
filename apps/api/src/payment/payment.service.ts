@@ -40,6 +40,13 @@ export class PaymentService {
     return this.paymentRepository.find({ relations: ['contract'] });
   }
 
+  async findByContract(contractId: string): Promise<Payment[]> {
+    return this.paymentRepository.find({
+      where: { contractId },
+      order: { date: 'DESC' },
+    });
+  }
+
   async findOne(id: string): Promise<Payment> {
     const payment = await this.paymentRepository.findOne({
       where: { id },

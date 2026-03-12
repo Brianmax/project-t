@@ -61,10 +61,13 @@ export class ContractService {
     return this.contractRepository.save(contract);
   }
 
-  async findAll(departmentId?: string): Promise<Contract[]> {
+  async findAll(tenantId?: string, departmentId?: string): Promise<Contract[]> {
+    const where: Record<string, string> = {};
+    if (tenantId) where.tenantId = tenantId;
+    if (departmentId) where.departmentId = departmentId;
     return this.contractRepository.find({
-      where: departmentId ? { departmentId } : {},
-      relations: ['tenant', 'department'],
+      where: Object.keys(where).length ? where : {},
+      relations: ['tenant', 'department', 'department.property'],
     });
   }
 
