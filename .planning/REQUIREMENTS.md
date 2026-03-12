@@ -18,15 +18,15 @@
 
 ### Contract
 
-- [ ] **CONT-01**: Tenant detail page displays the tenant's active contract property name
-- [ ] **CONT-02**: Tenant detail page displays the department name/number
-- [ ] **CONT-03**: Tenant detail page displays the monthly rent amount
-- [ ] **CONT-04**: Tenant detail page displays contract start date and end date
+- [x] **CONT-01**: Tenant detail page displays the tenant's active contract property name
+- [x] **CONT-02**: Tenant detail page displays the department name/number
+- [x] **CONT-03**: Tenant detail page displays the monthly rent amount
+- [x] **CONT-04**: Tenant detail page displays contract start date and end date
 
 ### Payments
 
-- [ ] **PAY-01**: Tenant detail page displays a list of all payments made on the tenant's contract
-- [ ] **PAY-02**: Each payment entry shows amount and date
+- [x] **PAY-01**: Tenant detail page displays a list of all payments made on the tenant's contract
+- [x] **PAY-02**: Each payment entry shows amount and date
 
 ### Pending Receipts
 
@@ -59,12 +59,12 @@
 | PERS-02 | Phase 1 | Complete |
 | PERS-03 | Phase 1 | Complete |
 | PERS-04 | Phase 1 | Complete |
-| CONT-01 | Phase 2 | Pending |
-| CONT-02 | Phase 2 | Pending |
-| CONT-03 | Phase 2 | Pending |
-| CONT-04 | Phase 2 | Pending |
-| PAY-01 | Phase 2 | Pending |
-| PAY-02 | Phase 2 | Pending |
+| CONT-01 | Phase 2 | Complete |
+| CONT-02 | Phase 2 | Complete |
+| CONT-03 | Phase 2 | Complete |
+| CONT-04 | Phase 2 | Complete |
+| PAY-01 | Phase 2 | Complete |
+| PAY-02 | Phase 2 | Complete |
 | RCPT-01 | Phase 3 | Pending |
 | RCPT-02 | Phase 3 | Pending |
 | RCPT-03 | Phase 3 | Pending |
