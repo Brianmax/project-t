@@ -57,7 +57,11 @@ Plans:
   2. Each pending receipt entry shows the billing period (month/year) and total amount
   3. When no pending receipts exist, the section displays a clear empty state message
   4. The section is view-only — no approve/deny/send actions are present
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — TDD: write failing spec for findPendingReceipts, fix APPROVED→PENDING_REVIEW bug in ReceiptService
+- [ ] 03-02-PLAN.md — Replace pendingReceipts length guard with always-visible section + EmptyState in TenantDashboard
 
 ## Progress
 
@@ -68,4 +72,4 @@ Phases execute in numeric order: 1 → 2 → 3
 |-------|----------------|--------|-----------|
 | 1. Navigation + Personal Info | 2/2 | Complete    | 2026-03-12 |
 | 2. Contract + Payment History | 1/3 | Complete    | 2026-03-12 |
-| 3. Pending Receipts | 0/TBD | Not started | - |
+| 3. Pending Receipts | 0/2 | Not started | - |
