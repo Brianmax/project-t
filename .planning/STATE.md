@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 02-contract-payment-history-02-PLAN.md
-last_updated: "2026-03-12T04:51:57.826Z"
+stopped_at: Checkpoint 02-contract-payment-history-03 — awaiting human-verify
+last_updated: "2026-03-12T04:54:28.887Z"
 last_activity: 2026-03-11 — Roadmap created
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
   percent: 50
 ---
 
@@ -72,6 +72,8 @@ Recent decisions affecting current work:
 - [Phase 02-contract-payment-history]: Contract/payment spec files mirror contract.overlap.spec.ts pattern: three repo mocks, TestingModule bootstrap, jest.clearAllMocks() in beforeEach
 - [Phase 02-contract-payment-history]: Tasks 1+2 committed atomically because pre-commit hook runs full test suite — TDD RED payment tests blocked contract-only commit
 - [Phase 02-contract-payment-history]: Dynamic where clause using Record<string,string> accumulator for clean multi-filter support in ContractService.findAll
+- [Phase 02-contract-payment-history]: Chained .then(setPayments) after Promise.all so payment fetch only fires when active contract is known
+- [Phase 02-contract-payment-history]: Return Promise.resolve([]) for no-active-contract path to keep promise chain uniform
 
 ### Pending Todos
 
@@ -84,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-12T04:51:57.824Z
-Stopped at: Completed 02-contract-payment-history-02-PLAN.md
+Last session: 2026-03-12T04:54:25.069Z
+Stopped at: Checkpoint 02-contract-payment-history-03 — awaiting human-verify
 Resume file: None
