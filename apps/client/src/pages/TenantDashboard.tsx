@@ -88,25 +88,25 @@ export default function TenantDashboard() {
     useEffect(() => {
         Promise.all([
             apiFetch<Tenant>(`/tenants/${tenantId}`),
-            apiFetch<Contract[]>(`/contracts`),
-            apiFetch<Payment[]>(`/payments`),
+            apiFetch<Contract[]>(`/contracts?tenantId=${tenantId}`),
             apiFetch<PendingReceipt[]>(`/contracts/receipts/pending`),
         ])
-            .then(([t, allContracts, allPayments, allPendingReceipts]) => {
+            .then(([t, tenantContracts, allPendingReceipts]) => {
                 setTenant(t);
-
-                const tenantContracts = allContracts.filter(c => c.tenant?.id === tenantId);
                 tenantContracts.sort((a, b) => b.endDate.localeCompare(a.endDate));
                 setContracts(tenantContracts);
 
                 const contractIds = new Set(tenantContracts.map(c => c.id));
-                const tenantPayments = allPayments.filter(p => p.contract && contractIds.has(p.contract.id));
-                tenantPayments.sort((a, b) => b.date.localeCompare(a.date));
-                setPayments(tenantPayments);
-
                 const tenantReceipts = allPendingReceipts.filter(r => contractIds.has(r.contractId));
                 setPendingReceipts(tenantReceipts);
+
+                const active = tenantContracts.find(c => new Date(c.endDate) >= new Date());
+                if (active) {
+                    return apiFetch<Payment[]>(`/payments?contractId=${active.id}`);
+                }
+                return Promise.resolve([] as Payment[]);
             })
+            .then(setPayments)
             .catch((err) => {
                 console.error(err);
                 setError('Error al cargar datos del inquilino');
