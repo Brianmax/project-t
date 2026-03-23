@@ -72,9 +72,14 @@ export class ContractTerminationService {
     const rentRefund = Math.max(0, rentRefundRaw - servicesCost);
     const guaranteeReturn = Math.max(0, guaranteeDeposit - guaranteeDeduction - servicesFromGuarantee);
 
+    const endDateStr =
+      contract.endDate instanceof Date
+        ? contract.endDate.toISOString().substring(0, 10)
+        : String(contract.endDate).substring(0, 10);
+
     const termination = this.terminationRepository.create({
       contractId,
-      expectedDepartureDate: contract.endDate,
+      expectedDepartureDate: endDateStr as unknown as Date,
       actualDepartureDate: new Date(dto.actualDepartureDate),
       apartmentCondition: dto.apartmentCondition ?? null,
       advanceApplied,
@@ -87,8 +92,9 @@ export class ContractTerminationService {
 
     const saved = await this.terminationRepository.save(termination);
 
-    contract.status = ContractStatus.TERMINATED;
-    await this.contractRepository.save(contract);
+    await this.contractRepository.update(contractId, {
+      status: ContractStatus.TERMINATED,
+    });
 
     await this.departmentRepository.update(contract.departmentId, {
       isAvailable: true,

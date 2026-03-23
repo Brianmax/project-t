@@ -96,6 +96,16 @@ None — no external service configuration required.
 - `GET /payments?contractId=X` returns payments ordered by date DESC — ready for payment history display
 - All API-level requirements (CONT-01 through CONT-04, PAY-01, PAY-02) satisfied
 
+## Self-Check: PASSED
+
+- FOUND: apps/api/src/contract/contract.service.ts
+- FOUND: apps/api/src/contract/contract.controller.ts
+- FOUND: apps/api/src/payment/payment.service.ts
+- FOUND: apps/api/src/payment/payment.controller.ts
+- FOUND: .planning/phases/02-contract-payment-history/02-02-SUMMARY.md
+- FOUND: commit a2bac3f (feat commit)
+- FOUND: commit 9d53022 (docs commit)
+
 ---
 *Phase: 02-contract-payment-history*
 *Completed: 2026-03-12*
