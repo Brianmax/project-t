@@ -1,4 +1,8 @@
-import { Injectable, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  ExecutionContext,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { JwtPayload } from '../decorators/current-user.decorator';
@@ -14,7 +18,9 @@ export class RolesGuard {
     ]);
     if (!roles || roles.length === 0) return true;
 
-    const request = context.switchToHttp().getRequest<Request & { user: JwtPayload }>();
+    const request = context
+      .switchToHttp()
+      .getRequest<Request & { user: JwtPayload }>();
     if (!roles.includes(request.user?.role)) {
       throw new ForbiddenException('Insufficient permissions');
     }

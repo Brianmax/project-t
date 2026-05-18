@@ -53,6 +53,7 @@ npm run test:e2e      # E2E tests
 ### Backend (NestJS + TypeORM)
 
 **Module Structure** - Each domain module follows NestJS conventions:
+
 ```
 src/[module-name]/
   ├── entities/[name].entity.ts    # TypeORM entity
@@ -63,6 +64,7 @@ src/[module-name]/
 ```
 
 **Core Domain Modules:**
+
 - `property` - Properties (buildings)
 - `department` - Individual rental units within properties
 - `tenant` - Tenants (renters)
@@ -76,6 +78,7 @@ src/[module-name]/
 - `contract-settlement` - Final settlement calculations when contracts end
 
 **Database:**
+
 - PostgreSQL (localhost:5432)
 - Database: `property_management`
 - Default credentials: user/password
@@ -84,6 +87,7 @@ src/[module-name]/
 ### Frontend (React + TypeScript)
 
 **File Structure:**
+
 ```
 src/
   ├── components/         # Shared UI components
@@ -106,6 +110,7 @@ src/
 **Routing** - React Router v7 with nested routes in App.tsx
 
 **API Communication:**
+
 - Backend runs on `http://localhost:3001`
 - Helper functions: `apiFetch()` and `apiPost()` in `lib/api.ts`
 
@@ -114,6 +119,7 @@ src/
 **Tailwind CSS v4** with semantic color tokens for dark mode support:
 
 **Semantic tokens** (defined in `index.css`):
+
 - Surfaces: `surface`, `surface-alt`, `surface-raised`
 - Borders: `border`, `border-light`, `border-ring`
 - Text: `on-surface`, `on-surface-strong`, `on-surface-medium`, `on-surface-muted`, `on-surface-faint`, `on-surface-ghost`
@@ -121,6 +127,7 @@ src/
 - Shadow: `shadow`
 
 **Dark mode:**
+
 - Toggled via `.dark` class on `<html>` element
 - Managed by `useTheme` hook with localStorage persistence
 - Theme toggle button in sidebar
@@ -132,10 +139,12 @@ src/
 ### Receipt Generation & Billing
 
 **Period-specific calculations** - Receipts calculate consumption for a specific month/year:
+
 - `receipt.service.ts` uses `calculateConsumptionForPeriod()` to get meter readings within the billing period
 - NOT `calculateCurrentConsumption()` which only gets latest 2 readings
 
 **Receipt workflow:**
+
 1. User selects month/year in DepartmentBilling page
 2. "Generar Recibo" button calls `POST /contract/:id/receipt?month=X&year=Y`
 3. Backend calculates: rent + period-specific water cost + period-specific electricity cost + extra charges
@@ -143,6 +152,7 @@ src/
 5. Receipt can be approved/denied before sending via WhatsApp
 
 **Important:** When month/year changes in UI:
+
 - Receipt state is cleared if no receipt exists for that period
 - Existing receipts are loaded by checking `receipt.id` (previews have no ID)
 - Consumption display uses receipt data if available, falls back to current consumption
@@ -150,17 +160,20 @@ src/
 ### Meter Reading & Consumption
 
 **Consumption calculation:**
+
 - `calculateConsumptionForPeriod(departmentId, meterType, startDate, endDate)` finds readings within date range
 - Calculates: `consumption = lastReading - firstReading`
 - Applies property-specific or default rates (`lightCostPerUnit`, `waterCostPerUnit`)
 
 **Meter types:**
+
 - `LIGHT` (electricity)
 - `WATER`
 
 ### Dark Mode
 
 Theme persisted to localStorage. Supports:
+
 - Manual toggle via sidebar button
 - System preference detection (`prefers-color-scheme`)
 - CSS custom properties override in `.dark` selector
@@ -170,6 +183,7 @@ Theme persisted to localStorage. Supports:
 ### API Endpoints
 
 Backend follows REST conventions:
+
 ```
 GET    /[resource]           # List all
 GET    /[resource]/:id       # Get one

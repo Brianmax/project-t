@@ -70,7 +70,10 @@ export class ContractTerminationService {
     // Services are absorbed by the rent refund first, then the remainder hits the guarantee
     const servicesFromGuarantee = Math.max(0, servicesCost - rentRefundRaw);
     const rentRefund = Math.max(0, rentRefundRaw - servicesCost);
-    const guaranteeReturn = Math.max(0, guaranteeDeposit - guaranteeDeduction - servicesFromGuarantee);
+    const guaranteeReturn = Math.max(
+      0,
+      guaranteeDeposit - guaranteeDeduction - servicesFromGuarantee,
+    );
 
     const endDateStr =
       contract.endDate instanceof Date

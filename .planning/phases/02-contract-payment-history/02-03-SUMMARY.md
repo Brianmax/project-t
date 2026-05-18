@@ -25,11 +25,11 @@ key-files:
     - apps/client/src/pages/TenantDashboard.tsx
 
 key-decisions:
-  - "Chained .then(setPayments) after primary Promise.all so payment fetch only fires when active contract is known"
-  - "Return Promise.resolve([]) for no-active-contract path to keep chain uniform"
+  - 'Chained .then(setPayments) after primary Promise.all so payment fetch only fires when active contract is known'
+  - 'Return Promise.resolve([]) for no-active-contract path to keep chain uniform'
 
 patterns-established:
-  - "Chained Promise pattern: Promise.all for parallel fetches, return inner fetch from .then for sequential dependency"
+  - 'Chained Promise pattern: Promise.all for parallel fetches, return inner fetch from .then for sequential dependency'
 
 requirements-completed: [CONT-01, CONT-02, CONT-03, CONT-04, PAY-01, PAY-02]
 
@@ -51,6 +51,7 @@ completed: 2026-03-12
 - **Files modified:** 1
 
 ## Accomplishments
+
 - Replaced full `/contracts` and `/payments` fetches with targeted `/contracts?tenantId=X` and `/payments?contractId=X`
 - Removed client-side filter loops (no more `allContracts.filter(c => c.tenant?.id === tenantId)`)
 - Used chained Promise pattern: payment fetch fires after active contract is identified
@@ -67,9 +68,11 @@ Each task was committed atomically:
 **Plan metadata:** pending final commit
 
 ## Files Created/Modified
+
 - `apps/client/src/pages/TenantDashboard.tsx` - Targeted API fetches + EmptyState for payments
 
 ## Decisions Made
+
 - Chained .then(setPayments) after primary Promise.all ensures payment fetch only fires when active contract is known, keeping logic sequential without nested Promises
 
 ## Deviations from Plan
@@ -77,12 +80,15 @@ Each task was committed atomically:
 None - plan executed exactly as written.
 
 ## Issues Encountered
+
 None
 
 ## User Setup Required
+
 None - no external service configuration required.
 
 ## Next Phase Readiness
+
 - All Phase 2 requirements verified and complete (human approval confirmed in browser)
 - Property name, department name, rent amount, start/end dates all display correctly in active contract section
 - Payments list shows amount and date per payment; empty state uses EmptyState component
@@ -90,5 +96,6 @@ None - no external service configuration required.
 - Phase 3 (receipts/billing) can begin
 
 ---
-*Phase: 02-contract-payment-history*
-*Completed: 2026-03-12*
+
+_Phase: 02-contract-payment-history_
+_Completed: 2026-03-12_

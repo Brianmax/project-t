@@ -6,7 +6,9 @@ import { Department } from '../department/entities/department.entity';
 import { ContractTerminationService } from './contract-termination.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ContractTermination, Contract, Department])],
+  imports: [
+    TypeOrmModule.forFeature([ContractTermination, Contract, Department]),
+  ],
   providers: [ContractTerminationService],
   exports: [ContractTerminationService],
 })

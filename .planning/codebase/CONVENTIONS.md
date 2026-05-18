@@ -5,6 +5,7 @@
 ## Naming Patterns
 
 **Files:**
+
 - Backend modules: `kebab-case` matching domain name (e.g., `contract.service.ts`, `contract.controller.ts`, `contract.module.ts`)
 - Backend entities: `kebab-case` in an `entities/` subdirectory (e.g., `entities/contract.entity.ts`)
 - Backend DTOs: `kebab-case` in a `dto/` subdirectory (e.g., `dto/create-contract.dto.ts`, `dto/update-contract.dto.ts`)
@@ -14,17 +15,20 @@
 - Frontend context files: `PascalCase.tsx` suffixed with `Context` (e.g., `AuthContext.tsx`)
 
 **Functions:**
+
 - Backend service methods: camelCase, verb-first (e.g., `findAll`, `findOne`, `create`, `update`, `remove`)
 - Frontend: camelCase for helpers, PascalCase for component functions (e.g., `apiFetch`, `apiPost`, `decodeJwtPayload`)
 - Default exports for pages/components: `export default function ComponentName`
 
 **Variables:**
+
 - camelCase throughout (TypeScript standard)
 - Boolean flags use `is`/`has` prefix (e.g., `isAvailable`, `isLoading`, `isValid`)
 - Loading states: `[entity]Loading` (e.g., `receiptLoading`, `terminationLoading`)
 - Submitting states: `submitting`
 
 **Types / Interfaces:**
+
 - PascalCase for interfaces and types
 - Frontend interfaces defined at top of page file under a `// ── Types ──` section comment
 - Backend uses both `interface` and `class` for DTOs; DTOs are `class` decorated with `class-validator`
@@ -33,12 +37,14 @@
 ## Code Style
 
 **Formatting:**
+
 - Tool: Prettier
 - Single quotes for strings: `singleQuote: true`
 - Trailing commas everywhere: `trailingComma: "all"`
 - End of line: auto (platform-neutral)
 
 **Linting:**
+
 - Backend: `typescript-eslint` recommendedTypeChecked + `eslint-plugin-prettier/recommended`
   - `@typescript-eslint/no-explicit-any` is turned **off**
   - `@typescript-eslint/no-floating-promises` is **warn**
@@ -48,11 +54,13 @@
 ## Import Organization
 
 **Backend (NestJS modules):**
+
 1. NestJS framework imports (`@nestjs/common`, `@nestjs/typeorm`, etc.)
 2. TypeORM imports (`typeorm`)
 3. Local entity/DTO/service imports (relative paths)
 
 **Frontend (React components):**
+
 1. React and React Router (`react`, `react-router-dom`)
 2. Third-party libraries (e.g., `lucide-react`)
 3. Local API helpers (`../lib/api`)
@@ -60,11 +68,13 @@
 5. Local shared styles (`../lib/styles`)
 
 **Path Aliases:**
+
 - None configured; all imports use relative paths
 
 ## Error Handling
 
 **Backend patterns:**
+
 - Throw NestJS built-in HTTP exceptions directly from service methods:
   - `NotFoundException` for missing resources: `throw new NotFoundException(\`Contract with ID "${id}" not found\`)`
   - `BadRequestException` for validation/business rule failures: `throw new BadRequestException(\`Department "${name}" is not available\`)`
@@ -73,6 +83,7 @@
 - No custom exception filters observed
 
 **Frontend patterns:**
+
 - `apiFetch` throws `Error` with server response text on non-OK responses
 - Pages catch errors in `.catch(() => setError('Message'))` inside `useEffect`
 - Error state displayed inline in the page, not via global error boundaries
@@ -85,12 +96,14 @@
 ## Comments
 
 **Section dividers** — used in larger frontend files to separate logical blocks:
+
 ```typescript
 // ── Types ──────────────────────────────────────────────
 // ── Component ──────────────────────────────────────────
 ```
 
 **Inline clarification comments** on entity columns to explain business meaning:
+
 ```typescript
 @Column({ type: 'decimal', precision: 10, scale: 2 })
 advancePayment: number; // Represents one month's rent upfront
@@ -105,6 +118,7 @@ advancePayment: number; // Represents one month's rent upfront
 **Parameters:** Controller methods receive decorated params (`@Param`, `@Body`, `@Query`). Services receive plain typed values.
 
 **Return Values:**
+
 - Backend services return entity types or custom interfaces wrapped in `Promise<T>`
 - `remove` methods return `Promise<void>` with `@HttpCode(HttpStatus.NO_CONTENT)` on controller
 - Frontend API helpers are generic: `apiFetch<T>(...): Promise<T>`
@@ -112,12 +126,14 @@ advancePayment: number; // Represents one month's rent upfront
 ## Module Design
 
 **Backend (NestJS):**
+
 - Every domain module registers its entities, exports its service
 - `@Injectable()` on all services, `@Controller('route-name')` on controllers
 - TypeORM repositories injected via `@InjectRepository(Entity)`
 - Cross-module dependencies injected via constructor (DI), never imported directly
 
 **Frontend:**
+
 - Shared reusable Tailwind class strings live in `apps/client/src/lib/styles.ts` (exported as named constants: `inputCls`, `btnPrimaryCls`, `btnSecondaryCls`, `btnDangerCls`, `cardCls`, `labelCls`)
 - No barrel `index.ts` files — direct relative imports to each file
 - Context providers (`AuthContext.tsx`) export both the provider component and a typed hook
@@ -127,6 +143,7 @@ advancePayment: number; // Represents one month's rent upfront
 
 - `@PrimaryGeneratedColumn('uuid')` for all primary keys (UUID string)
 - Foreign key columns carry both the relation (`@ManyToOne`) and the raw FK column with explicit `name`:
+
   ```typescript
   @ManyToOne(() => Tenant, (tenant) => tenant.id)
   tenant: Tenant;
@@ -134,6 +151,7 @@ advancePayment: number; // Represents one month's rent upfront
   @Column({ name: 'tenant_id', type: 'uuid' })
   tenantId: string;
   ```
+
 - Decimal money columns always use `{ type: 'decimal', precision: 10, scale: 2 }`
 - Enums defined as TypeScript `enum` and referenced in `@Column({ type: 'enum', enum: EnumName })`
 - `synchronize: true` is active — schema auto-updates from entity definitions
@@ -147,4 +165,4 @@ advancePayment: number; // Represents one month's rent upfront
 
 ---
 
-*Convention analysis: 2026-03-09*
+_Convention analysis: 2026-03-09_

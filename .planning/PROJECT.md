@@ -49,11 +49,12 @@ Managers can quickly see the full picture of a tenant — who they are, their ac
 
 ## Key Decisions
 
-| Decision | Rationale | Outcome |
-|---|---|---|
-| Route: `/tenants/:id` | Matches English convention used in existing routes | — Pending |
-| Pending receipts: view only | Actions handled in DepartmentBilling, no duplication needed | — Pending |
-| Pending receipts: `pending_review` only | Reduces noise; actionable receipts are the priority | — Pending |
+| Decision                                | Rationale                                                   | Outcome   |
+| --------------------------------------- | ----------------------------------------------------------- | --------- |
+| Route: `/tenants/:id`                   | Matches English convention used in existing routes          | — Pending |
+| Pending receipts: view only             | Actions handled in DepartmentBilling, no duplication needed | — Pending |
+| Pending receipts: `pending_review` only | Reduces noise; actionable receipts are the priority         | — Pending |
 
 ---
-*Last updated: 2026-03-11 after initialization*
+
+_Last updated: 2026-03-11 after initialization_

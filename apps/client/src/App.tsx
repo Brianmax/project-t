@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { Toaster } from 'sonner';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
@@ -24,6 +25,15 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <Toaster
+          position="top-right"
+          richColors
+          closeButton
+          toastOptions={{
+            duration: 3500,
+            className: 'font-sans',
+          }}
+        />
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -34,7 +44,10 @@ export default function App() {
               <Route path="properties/:id" element={<PropertyDetail />} />
               <Route path="departments" element={<Departments />} />
               <Route path="departments/:id" element={<DepartmentDashboard />} />
-              <Route path="departments/:id/billing" element={<DepartmentBilling />} />
+              <Route
+                path="departments/:id/billing"
+                element={<DepartmentBilling />}
+              />
               <Route path="tenants" element={<Tenants />} />
               <Route path="tenants/:id" element={<TenantDashboard />} />
               <Route path="contracts" element={<Contracts />} />

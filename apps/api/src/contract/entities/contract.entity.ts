@@ -39,6 +39,10 @@ export class Contract {
   @Column({ name: 'department_id', type: 'uuid' })
   departmentId: string; // Foreign key for Department
 
-  @Column({ type: 'enum', enum: ContractStatus, default: ContractStatus.ACTIVE })
+  @Column({
+    type: 'enum',
+    enum: ContractStatus,
+    default: ContractStatus.ACTIVE,
+  })
   status: ContractStatus;
 }

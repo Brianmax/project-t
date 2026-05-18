@@ -21,7 +21,9 @@ export class JwtRefreshGuard {
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<RefreshRequest>();
-    const rawToken = (request.cookies as Record<string, string>)['refreshToken'];
+    const rawToken = (request.cookies as Record<string, string>)[
+      'refreshToken'
+    ];
     if (!rawToken) throw new UnauthorizedException();
 
     try {

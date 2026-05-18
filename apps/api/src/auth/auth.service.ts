@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
@@ -22,7 +26,9 @@ export class AuthService {
 
   async login(dto: LoginDto, res: Response): Promise<{ accessToken: string }> {
     const user = await this.userService.findByEmail(dto.email);
-    const isValid = user ? await bcrypt.compare(dto.password, user.passwordHash) : false;
+    const isValid = user
+      ? await bcrypt.compare(dto.password, user.passwordHash)
+      : false;
     if (!user || !isValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -35,7 +41,12 @@ export class AuthService {
     return this.issueTokens(user.id, user.email, user.role, res);
   }
 
-  async refresh(userId: string, email: string, rawToken: string, res: Response): Promise<{ accessToken: string }> {
+  async refresh(
+    userId: string,
+    email: string,
+    rawToken: string,
+    res: Response,
+  ): Promise<{ accessToken: string }> {
     const user = await this.userService.findById(userId);
     if (!user?.refreshTokenHash) throw new UnauthorizedException();
 
@@ -47,14 +58,27 @@ export class AuthService {
 
   async logout(userId: string, res: Response): Promise<void> {
     await this.userService.updateRefreshTokenHash(userId, null);
-    res.clearCookie('refreshToken', { httpOnly: true, sameSite: 'lax', path: '/' });
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+    });
   }
 
-  private async issueTokens(userId: string, email: string, role: string, res: Response): Promise<{ accessToken: string }> {
+  private async issueTokens(
+    userId: string,
+    email: string,
+    role: string,
+    res: Response,
+  ): Promise<{ accessToken: string }> {
     const payload = { sub: userId, email, role };
 
-    const accessExpiresIn = this.configService.getOrThrow<string>('JWT_ACCESS_EXPIRES_IN');
-    const refreshExpiresIn = this.configService.getOrThrow<string>('JWT_REFRESH_EXPIRES_IN');
+    const accessExpiresIn = this.configService.getOrThrow<string>(
+      'JWT_ACCESS_EXPIRES_IN',
+    );
+    const refreshExpiresIn = this.configService.getOrThrow<string>(
+      'JWT_REFRESH_EXPIRES_IN',
+    );
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {

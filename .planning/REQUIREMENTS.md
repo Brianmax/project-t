@@ -43,37 +43,39 @@
 
 ## Out of Scope
 
-| Feature | Reason |
-|---|---|
-| Edit tenant info from detail page | Editing handled in tenant management flow |
-| Receipt actions (approve/deny/send) | Already handled in DepartmentBilling page |
-| Multiple active contracts | Current model is one active contract per tenant |
-| Meter readings | Deferred to v2 |
+| Feature                             | Reason                                          |
+| ----------------------------------- | ----------------------------------------------- |
+| Edit tenant info from detail page   | Editing handled in tenant management flow       |
+| Receipt actions (approve/deny/send) | Already handled in DepartmentBilling page       |
+| Multiple active contracts           | Current model is one active contract per tenant |
+| Meter readings                      | Deferred to v2                                  |
 
 ## Traceability
 
-| Requirement | Phase | Status |
-|---|---|---|
-| NAV-01 | Phase 1 | Complete |
-| PERS-01 | Phase 1 | Complete |
-| PERS-02 | Phase 1 | Complete |
-| PERS-03 | Phase 1 | Complete |
-| PERS-04 | Phase 1 | Complete |
-| CONT-01 | Phase 2 | Complete |
-| CONT-02 | Phase 2 | Complete |
-| CONT-03 | Phase 2 | Complete |
-| CONT-04 | Phase 2 | Complete |
-| PAY-01 | Phase 2 | Complete |
-| PAY-02 | Phase 2 | Complete |
-| RCPT-01 | Phase 3 | Complete |
-| RCPT-02 | Phase 3 | Complete |
-| RCPT-03 | Phase 3 | Pending |
+| Requirement | Phase   | Status   |
+| ----------- | ------- | -------- |
+| NAV-01      | Phase 1 | Complete |
+| PERS-01     | Phase 1 | Complete |
+| PERS-02     | Phase 1 | Complete |
+| PERS-03     | Phase 1 | Complete |
+| PERS-04     | Phase 1 | Complete |
+| CONT-01     | Phase 2 | Complete |
+| CONT-02     | Phase 2 | Complete |
+| CONT-03     | Phase 2 | Complete |
+| CONT-04     | Phase 2 | Complete |
+| PAY-01      | Phase 2 | Complete |
+| PAY-02      | Phase 2 | Complete |
+| RCPT-01     | Phase 3 | Complete |
+| RCPT-02     | Phase 3 | Complete |
+| RCPT-03     | Phase 3 | Pending  |
 
 **Coverage:**
+
 - v1 requirements: 14 total
 - Mapped to phases: 14
 - Unmapped: 0 ✓
 
 ---
-*Requirements defined: 2026-03-11*
-*Last updated: 2026-03-11 after roadmap creation*
+
+_Requirements defined: 2026-03-11_
+_Last updated: 2026-03-11 after roadmap creation_

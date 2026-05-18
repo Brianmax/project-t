@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
+import { cn } from '../lib/utils';
 
 interface ModalProps {
   isOpen: boolean;
@@ -8,7 +9,12 @@ interface ModalProps {
   children: React.ReactNode;
 }
 
-export default function Modal({ isOpen, onClose, title, children }: ModalProps) {
+export default function Modal({
+  isOpen,
+  onClose,
+  title,
+  children,
+}: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -30,14 +36,24 @@ export default function Modal({ isOpen, onClose, title, children }: ModalProps) 
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[8px] animate-fade-in"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-[8px] animate-fade-in"
       onClick={(e) => {
         if (e.target === overlayRef.current) onClose();
       }}
     >
-      <div className="bg-surface rounded-2xl shadow-2xl shadow-black/15 w-full max-w-lg mx-4 max-h-[88vh] flex flex-col animate-slide-up ring-1 ring-black/[0.06] dark:ring-white/[0.06]">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h3 className="text-[15px] font-bold text-on-surface tracking-tight">{title}</h3>
+      <div
+        className={cn(
+          'bg-surface rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-black/15',
+          'w-full sm:max-w-lg mx-0 sm:mx-4',
+          'max-h-[90vh] sm:max-h-[88vh]',
+          'flex flex-col animate-slide-up',
+          'ring-1 ring-black/[0.06] dark:ring-white/[0.06]',
+        )}
+      >
+        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-border">
+          <h3 className="text-[15px] font-bold text-on-surface tracking-tight">
+            {title}
+          </h3>
           <button
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-lg text-on-surface-faint hover:text-on-surface-medium hover:bg-surface-raised active:scale-95 transition-all duration-150"
@@ -46,7 +62,9 @@ export default function Modal({ isOpen, onClose, title, children }: ModalProps) 
             <X size={17} />
           </button>
         </div>
-        <div className="px-6 py-5 overflow-y-auto flex-1">{children}</div>
+        <div className="px-5 sm:px-6 py-5 overflow-y-auto flex-1">
+          {children}
+        </div>
       </div>
     </div>
   );

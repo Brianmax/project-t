@@ -7,13 +7,15 @@
 ---
 
 <phase_requirements>
+
 ## Phase Requirements
 
-| ID | Description | Research Support |
-|----|-------------|-----------------|
+| ID      | Description                                                                         | Research Support                                                                                                                                                                         |
+| ------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | RCPT-01 | Tenant detail page displays a section listing receipts with `pending_review` status | Backend `findPendingReceipts()` has a bug — queries `APPROVED` not `PENDING_REVIEW`; fix is a one-line where-clause change. Frontend fetch + filter is already wired in TenantDashboard. |
-| RCPT-02 | Each pending receipt entry shows the billing period (month/year) and total amount | `Receipt` interface already exposes `period` (string like "March 2026") and `totalDue` (number). TenantDashboard already renders both fields. |
-| RCPT-03 | If no pending receipts exist, the section shows an empty state message | Current UI only renders the section when `pendingReceipts.length > 0` — no empty state is shown when zero. An unconditional section with `EmptyState` when array is empty must be added. |
+| RCPT-02 | Each pending receipt entry shows the billing period (month/year) and total amount   | `Receipt` interface already exposes `period` (string like "March 2026") and `totalDue` (number). TenantDashboard already renders both fields.                                            |
+| RCPT-03 | If no pending receipts exist, the section shows an empty state message              | Current UI only renders the section when `pendingReceipts.length > 0` — no empty state is shown when zero. An unconditional section with `EmptyState` when array is empty must be added. |
+
 </phase_requirements>
 
 ---
@@ -31,12 +33,13 @@ Two targeted defects must be fixed. First, `ReceiptService.findPendingReceipts()
 ## Standard Stack
 
 ### Core
-| Library | Version | Purpose | Why Standard |
-|---------|---------|---------|--------------|
-| NestJS / TypeORM | already installed | Backend query with status filter | Project standard |
-| React + apiFetch | already installed | Frontend fetch via `apiFetch<T>` | Project standard |
-| EmptyState component | `apps/client/src/components/EmptyState.tsx` | Standardised no-data placeholder | Used by payments section in same page |
-| Jest / `@nestjs/testing` | already installed | Unit tests for service layer | Used in all Phase 2 specs |
+
+| Library                  | Version                                     | Purpose                          | Why Standard                          |
+| ------------------------ | ------------------------------------------- | -------------------------------- | ------------------------------------- |
+| NestJS / TypeORM         | already installed                           | Backend query with status filter | Project standard                      |
+| React + apiFetch         | already installed                           | Frontend fetch via `apiFetch<T>` | Project standard                      |
+| EmptyState component     | `apps/client/src/components/EmptyState.tsx` | Standardised no-data placeholder | Used by payments section in same page |
+| Jest / `@nestjs/testing` | already installed                           | Unit tests for service layer     | Used in all Phase 2 specs             |
 
 ### No new dependencies required.
 
@@ -61,7 +64,7 @@ This route is registered BEFORE the `GET /contracts/:id` wildcard in the control
 // Source: apps/api/src/receipt/receipt.service.ts (corrected)
 const receipts = await this.receiptRepository.find({
   where: {
-    status: ReceiptStatus.PENDING_REVIEW,   // was APPROVED — this is the bug
+    status: ReceiptStatus.PENDING_REVIEW, // was APPROVED — this is the bug
   },
   order: {
     year: 'DESC',
@@ -104,6 +107,7 @@ All sections in TenantDashboard that can have zero items use `EmptyState`. Payme
 Phase 2 established the spec file pattern for new service methods. A `receipt.service.spec.ts` does not yet exist — it must be created. It follows the exact same three-mock / TestingModule / `jest.clearAllMocks()` structure as `contract.service.spec.ts` and `payment.service.spec.ts`.
 
 The `ReceiptService` constructor has 5 injected dependencies:
+
 - `Repository<Contract>` (via `getRepositoryToken(Contract)`)
 - `Repository<Payment>` (via `getRepositoryToken(Payment)`)
 - `Repository<ExtraCharge>` (via `getRepositoryToken(ExtraCharge)`)
@@ -113,6 +117,7 @@ The `ReceiptService` constructor has 5 injected dependencies:
 The test for `findPendingReceipts` only needs `mockReceiptRepository.find` — the other four can be stub objects.
 
 ### Anti-Patterns to Avoid
+
 - **Removing the `balance < 0` filter without changing the status filter first:** The `APPROVED` + `balance < 0` combination has different semantics. Fix the status to `PENDING_REVIEW` first; then evaluate whether the balance filter is still needed (it is not for this phase).
 - **Adding a new dedicated endpoint `GET /contracts/:id/receipts?status=pending`:** This would require a larger change to `GET :id/receipts` (currently requires `month` and `year` query params with `ParseIntPipe` — mandatory). The existing global endpoint is sufficient and already wired.
 - **Rendering EmptyState only in a nested conditional:** Section heading should always render so the page layout is stable regardless of data state.
@@ -121,32 +126,36 @@ The test for `findPendingReceipts` only needs `mockReceiptRepository.find` — t
 
 ## Don't Hand-Roll
 
-| Problem | Don't Build | Use Instead | Why |
-|---------|-------------|-------------|-----|
-| Empty state UI | Custom "no data" div | `EmptyState` component | Already used for payments on same page; consistent UX |
-| Status enum string | Hardcoded `'pending_review'` string | `ReceiptStatus.PENDING_REVIEW` | Type-safe, rename-proof |
+| Problem            | Don't Build                         | Use Instead                    | Why                                                   |
+| ------------------ | ----------------------------------- | ------------------------------ | ----------------------------------------------------- |
+| Empty state UI     | Custom "no data" div                | `EmptyState` component         | Already used for payments on same page; consistent UX |
+| Status enum string | Hardcoded `'pending_review'` string | `ReceiptStatus.PENDING_REVIEW` | Type-safe, rename-proof                               |
 
 ---
 
 ## Common Pitfalls
 
 ### Pitfall 1: `findPendingReceipts` Queries Wrong Status
+
 **What goes wrong:** The method has `status: ReceiptStatus.APPROVED` — no `pending_review` receipts are ever returned. The frontend renders correctly only for the zero-results path (and even that is broken by RCPT-03). End-to-end, RCPT-01 is a dead letter until this is fixed.
 **Why it happens:** Likely a copy-paste or logic error during original implementation; the endpoint name says "pending" but the query says "approved".
 **How to avoid:** Fix to `ReceiptStatus.PENDING_REVIEW`. Remove the `balance < 0` post-filter — it belongs to "unpaid approved receipts" semantics, not "awaiting review".
 **Warning signs:** `GET /contracts/receipts/pending` returns an empty array even when `pending_review` receipts exist in the DB.
 
 ### Pitfall 2: `GET /contracts/receipts/pending` Route Ordering
+
 **What goes wrong:** If the `@Get('receipts/pending')` handler is moved below `@Get(':id')`, NestJS will match `/contracts/receipts/pending` as `id = 'receipts'` and then look for `GET /contracts/receipts` which returns a 404.
 **Why it happens:** NestJS route matching is top-to-bottom within a controller class.
 **How to avoid:** Do not reorder controller methods. The current order is correct — `receipts/pending` before `:id`.
 
 ### Pitfall 3: `totalDue` Arrives as String from TypeORM Decimal Column
+
 **What goes wrong:** TypeORM `decimal` columns return JS strings, not numbers. `receipt.totalDue.toFixed(2)` throws `toFixed is not a function`.
 **Why it happens:** TypeORM decimal/numeric columns serialize to string to preserve precision.
 **How to avoid:** `ReceiptService.toReceipt()` already wraps totals with `Number(record.totalDue)` — this is correct. The `Receipt` interface defines `totalDue: number`. No additional conversion needed in the frontend if the service is used correctly.
 
 ### Pitfall 4: Missing Empty State When Array Is Empty
+
 **What goes wrong:** The section simply disappears when `pendingReceipts.length === 0`, leaving no feedback to the user. RCPT-03 is unmet.
 **Why it happens:** Original implementation wrapped the entire section in a length guard. This is a common "don't render when empty" shortcut that conflicts with the "show an empty state" requirement.
 **How to avoid:** Always render the section heading and use conditional rendering inside to toggle between list and EmptyState.
@@ -156,6 +165,7 @@ The test for `findPendingReceipts` only needs `mockReceiptRepository.find` — t
 ## Code Examples
 
 ### Fix: `ReceiptService.findPendingReceipts` (backend)
+
 ```typescript
 // Source: apps/api/src/receipt/receipt.service.ts — corrected version
 async findPendingReceipts(): Promise<Receipt[]> {
@@ -174,6 +184,7 @@ async findPendingReceipts(): Promise<Receipt[]> {
 ```
 
 ### Fix: Pending Receipts Section (frontend)
+
 ```typescript
 // apps/client/src/pages/TenantDashboard.tsx
 // Replace the {pendingReceipts.length > 0 && (...)} block with:
@@ -202,6 +213,7 @@ async findPendingReceipts(): Promise<Receipt[]> {
 ```
 
 ### Spec: `receipt.service.spec.ts` scaffold
+
 ```typescript
 // apps/api/src/receipt/receipt.service.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
@@ -216,7 +228,12 @@ import { ConsumptionService } from '../consumption/consumption.service';
 describe('ReceiptService', () => {
   let service: ReceiptService;
 
-  const mockReceiptRepository = { find: jest.fn(), findOne: jest.fn(), save: jest.fn(), create: jest.fn() };
+  const mockReceiptRepository = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+    save: jest.fn(),
+    create: jest.fn(),
+  };
   const mockContractRepository = { findOne: jest.fn() };
   const mockPaymentRepository = { find: jest.fn() };
   const mockExtraChargeRepository = { find: jest.fn() };
@@ -227,10 +244,22 @@ describe('ReceiptService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ReceiptService,
-        { provide: getRepositoryToken(ReceiptEntity), useValue: mockReceiptRepository },
-        { provide: getRepositoryToken(Contract), useValue: mockContractRepository },
-        { provide: getRepositoryToken(Payment), useValue: mockPaymentRepository },
-        { provide: getRepositoryToken(ExtraCharge), useValue: mockExtraChargeRepository },
+        {
+          provide: getRepositoryToken(ReceiptEntity),
+          useValue: mockReceiptRepository,
+        },
+        {
+          provide: getRepositoryToken(Contract),
+          useValue: mockContractRepository,
+        },
+        {
+          provide: getRepositoryToken(Payment),
+          useValue: mockPaymentRepository,
+        },
+        {
+          provide: getRepositoryToken(ExtraCharge),
+          useValue: mockExtraChargeRepository,
+        },
         { provide: ConsumptionService, useValue: mockConsumptionService },
       ],
     }).compile();
@@ -242,19 +271,31 @@ describe('ReceiptService', () => {
       mockReceiptRepository.find.mockResolvedValue([]);
       await service.findPendingReceipts();
       expect(mockReceiptRepository.find).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { status: ReceiptStatus.PENDING_REVIEW } })
+        expect.objectContaining({
+          where: { status: ReceiptStatus.PENDING_REVIEW },
+        }),
       );
     });
 
     it('should return mapped Receipt objects for all pending_review receipts', async () => {
       const stub = {
-        id: 'r1', contractId: 'c1', month: 3, year: 2026,
-        startDay: null, endDay: null,
+        id: 'r1',
+        contractId: 'c1',
+        month: 3,
+        year: 2026,
+        startDay: null,
+        endDay: null,
         status: ReceiptStatus.PENDING_REVIEW,
-        tenantName: 'Ana', departmentName: 'Depto 1',
-        propertyAddress: 'Av. Lima 1', period: 'March 2026',
-        items: [], totalPayments: '0', totalDue: '1500', balance: '-1500',
-        createdAt: new Date(), updatedAt: new Date(),
+        tenantName: 'Ana',
+        departmentName: 'Depto 1',
+        propertyAddress: 'Av. Lima 1',
+        period: 'March 2026',
+        items: [],
+        totalPayments: '0',
+        totalDue: '1500',
+        balance: '-1500',
+        createdAt: new Date(),
+        updatedAt: new Date(),
       };
       mockReceiptRepository.find.mockResolvedValue([stub]);
       const result = await service.findPendingReceipts();
@@ -271,28 +312,32 @@ describe('ReceiptService', () => {
 ## Validation Architecture
 
 ### Test Framework
-| Property | Value |
-|----------|-------|
-| Framework | Jest (NestJS default, `@nestjs/testing`) |
-| Config file | `apps/api/package.json` (jest config inline) |
-| Quick run command | `cd apps/api && npm test -- --testPathPattern=receipt.service.spec` |
-| Full suite command | `cd apps/api && npm test` |
+
+| Property           | Value                                                               |
+| ------------------ | ------------------------------------------------------------------- |
+| Framework          | Jest (NestJS default, `@nestjs/testing`)                            |
+| Config file        | `apps/api/package.json` (jest config inline)                        |
+| Quick run command  | `cd apps/api && npm test -- --testPathPattern=receipt.service.spec` |
+| Full suite command | `cd apps/api && npm test`                                           |
 
 ### Phase Requirements to Test Map
-| Req ID | Behavior | Test Type | Automated Command | File Exists? |
-|--------|----------|-----------|-------------------|-------------|
-| RCPT-01 | `findPendingReceipts()` queries `PENDING_REVIEW` status | unit | `cd apps/api && npm test -- --testPathPattern=receipt.service.spec` | Wave 0 |
-| RCPT-02 | Returned `Receipt` objects have numeric `totalDue` and string `period` | unit | same | Wave 0 |
-| RCPT-03 | EmptyState renders when no pending receipts | manual visual | N/A — React component, no test framework for frontend | manual-only |
+
+| Req ID  | Behavior                                                               | Test Type     | Automated Command                                                   | File Exists? |
+| ------- | ---------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------- | ------------ |
+| RCPT-01 | `findPendingReceipts()` queries `PENDING_REVIEW` status                | unit          | `cd apps/api && npm test -- --testPathPattern=receipt.service.spec` | Wave 0       |
+| RCPT-02 | Returned `Receipt` objects have numeric `totalDue` and string `period` | unit          | same                                                                | Wave 0       |
+| RCPT-03 | EmptyState renders when no pending receipts                            | manual visual | N/A — React component, no test framework for frontend               | manual-only  |
 
 RCPT-03 is manual-only: the project has no frontend testing framework (no Vitest, Playwright, or React Testing Library found in `apps/client`). Verification is visual inspection in the browser with zero pending receipts for a tenant.
 
 ### Sampling Rate
+
 - **Per task commit:** `cd apps/api && npm test -- --testPathPattern=receipt.service.spec --passWithNoTests`
 - **Per wave merge:** `cd apps/api && npm test`
 - **Phase gate:** Full suite green before `/gsd:verify-work`
 
 ### Wave 0 Gaps
+
 - [ ] `apps/api/src/receipt/receipt.service.spec.ts` — covers RCPT-01, RCPT-02
 
 ---
@@ -300,6 +345,7 @@ RCPT-03 is manual-only: the project has no frontend testing framework (no Vitest
 ## Sources
 
 ### Primary (HIGH confidence)
+
 - Direct source read: `apps/api/src/receipt/receipt.service.ts` — `findPendingReceipts` implementation
 - Direct source read: `apps/api/src/contract/contract.controller.ts` — route ordering and `GET receipts/pending`
 - Direct source read: `apps/client/src/pages/TenantDashboard.tsx` — full existing UI and fetch logic
@@ -308,6 +354,7 @@ RCPT-03 is manual-only: the project has no frontend testing framework (no Vitest
 - Direct source read: `apps/api/src/payment/payment.service.spec.ts` — spec scaffolding pattern
 
 ### Secondary (MEDIUM confidence)
+
 - `.planning/STATE.md` accumulated decisions — confirmed view-only requirement, `pending_review` only requirement
 - `.planning/REQUIREMENTS.md` — confirmed RCPT-01/02/03 scope
 
@@ -316,6 +363,7 @@ RCPT-03 is manual-only: the project has no frontend testing framework (no Vitest
 ## Metadata
 
 **Confidence breakdown:**
+
 - Backend bug identification: HIGH — read the source directly, confirmed `APPROVED` vs `PENDING_REVIEW` mismatch
 - Frontend gap identification: HIGH — read TenantDashboard directly, confirmed `length > 0` guard with no EmptyState
 - Test pattern: HIGH — read two existing spec files, pattern is fully established

@@ -1,4 +1,11 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  ReactNode,
+} from 'react';
 import { setAccessToken, setRefreshCallback } from '../lib/api';
 
 interface AuthUser {
@@ -56,25 +63,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     silentRefresh().finally(() => setIsLoading(false));
   }, [silentRefresh]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      try {
-        const json = JSON.parse(body) as { message?: string };
-        throw new Error(json.message || 'Login failed');
-      } catch {
-        throw new Error(body || 'Login failed');
+  const login = useCallback(
+    async (email: string, password: string) => {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        try {
+          const json = JSON.parse(body) as { message?: string };
+          throw new Error(json.message || 'Login failed');
+        } catch {
+          throw new Error(body || 'Login failed');
+        }
       }
-    }
-    const data = (await res.json()) as { accessToken: string };
-    applyToken(data.accessToken);
-  }, [applyToken]);
+      const data = (await res.json()) as { accessToken: string };
+      applyToken(data.accessToken);
+    },
+    [applyToken],
+  );
 
   const register = useCallback(async (email: string, password: string) => {
     const res = await fetch(`${API_BASE}/auth/register`, {
@@ -105,7 +115,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [accessToken]);
 
   return (
-    <AuthContext.Provider value={{ user, accessToken, isLoading, login, register, logout }}>
+    <AuthContext.Provider
+      value={{ user, accessToken, isLoading, login, register, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

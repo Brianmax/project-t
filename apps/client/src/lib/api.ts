@@ -11,8 +11,13 @@ export function setRefreshCallback(cb: () => Promise<string | null>) {
   _onRefresh = cb;
 }
 
-export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const authHeader = _accessToken ? { Authorization: `Bearer ${_accessToken}` } : {};
+export async function apiFetch<T>(
+  path: string,
+  options?: RequestInit,
+): Promise<T> {
+  const authHeader = _accessToken
+    ? { Authorization: `Bearer ${_accessToken}` }
+    : {};
 
   const res = await fetch(`${API_BASE}${path}`, {
     credentials: 'include',

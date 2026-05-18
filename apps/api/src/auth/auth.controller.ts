@@ -40,14 +40,20 @@ export class AuthController {
   @UseGuards(JwtRefreshGuard)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  refresh(@Req() req: RefreshRequest, @Res({ passthrough: true }) res: Response) {
+  refresh(
+    @Req() req: RefreshRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const { sub, email, rawToken } = req.user;
     return this.authService.refresh(sub, email, rawToken, res);
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
-  logout(@CurrentUser() user: JwtPayload, @Res({ passthrough: true }) res: Response) {
+  logout(
+    @CurrentUser() user: JwtPayload,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     return this.authService.logout(user.sub, res);
   }
 

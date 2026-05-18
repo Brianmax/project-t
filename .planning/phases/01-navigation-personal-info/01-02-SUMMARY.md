@@ -14,7 +14,10 @@ affects:
 # Tech tracking
 tech-stack:
   added: []
-  patterns: [Name cell wrapped with React Router Link for SPA navigation without row-level onclick]
+  patterns:
+    [
+      Name cell wrapped with React Router Link for SPA navigation without row-level onclick,
+    ]
 
 key-files:
   created: []
@@ -22,12 +25,12 @@ key-files:
     - apps/client/src/pages/Tenants.tsx
 
 key-decisions:
-  - "Wrapped only the name cell <td> with <Link>, not the entire <tr>, to keep valid HTML"
-  - "Used existing imported Link component — no new imports required"
-  - "Added hover:underline class to make navigation affordance visible"
+  - 'Wrapped only the name cell <td> with <Link>, not the entire <tr>, to keep valid HTML'
+  - 'Used existing imported Link component — no new imports required'
+  - 'Added hover:underline class to make navigation affordance visible'
 
 patterns-established:
-  - "Table row navigation pattern: wrap name/identifier cell with React Router Link, not the full row"
+  - 'Table row navigation pattern: wrap name/identifier cell with React Router Link, not the full row'
 
 requirements-completed: [NAV-01]
 
@@ -91,5 +94,6 @@ None - no external service configuration required.
 - Phase 1 is now fully complete — both plans (01-01 personal info fields, 01-02 navigation) are done
 
 ---
-*Phase: 01-navigation-personal-info*
-*Completed: 2026-03-12*
+
+_Phase: 01-navigation-personal-info_
+_Completed: 2026-03-12_

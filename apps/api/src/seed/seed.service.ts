@@ -16,7 +16,9 @@ export class SeedService implements OnModuleInit {
     const adminPassword = this.configService.get<string>('ADMIN_PASSWORD');
 
     if (!adminEmail || !adminPassword) {
-      this.logger.warn('ADMIN_EMAIL or ADMIN_PASSWORD not set — skipping admin seed');
+      this.logger.warn(
+        'ADMIN_EMAIL or ADMIN_PASSWORD not set — skipping admin seed',
+      );
       return;
     }
 

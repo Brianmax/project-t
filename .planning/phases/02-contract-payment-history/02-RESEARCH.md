@@ -21,16 +21,18 @@ The `department.property` relation is NOT loaded in `ContractService.findAll()` 
 ---
 
 <phase_requirements>
+
 ## Phase Requirements
 
-| ID | Description | Research Support |
-|----|-------------|-----------------|
-| CONT-01 | Display active contract property name | Requires `department.property` deep relation in ContractService — not currently loaded |
-| CONT-02 | Display department name/number | `contract.department.name` already available in existing `findOne`/`findAll` with `['tenant', 'department']` |
-| CONT-03 | Display monthly rent amount | `contract.rentAmount` already on Contract entity |
-| CONT-04 | Display contract start date and end date | `contract.startDate` / `contract.endDate` already on Contract entity |
-| PAY-01 | Display list of all payments on the contract | Requires either `GET /payments?contractId=X` (new filter) or deep relation loading on contract |
-| PAY-02 | Each payment shows amount and date | `payment.amount` + `payment.date` already on Payment entity; `PaymentType` enum available for type label |
+| ID      | Description                                  | Research Support                                                                                             |
+| ------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| CONT-01 | Display active contract property name        | Requires `department.property` deep relation in ContractService — not currently loaded                       |
+| CONT-02 | Display department name/number               | `contract.department.name` already available in existing `findOne`/`findAll` with `['tenant', 'department']` |
+| CONT-03 | Display monthly rent amount                  | `contract.rentAmount` already on Contract entity                                                             |
+| CONT-04 | Display contract start date and end date     | `contract.startDate` / `contract.endDate` already on Contract entity                                         |
+| PAY-01  | Display list of all payments on the contract | Requires either `GET /payments?contractId=X` (new filter) or deep relation loading on contract               |
+| PAY-02  | Each payment shows amount and date           | `payment.amount` + `payment.date` already on Payment entity; `PaymentType` enum available for type label     |
+
 </phase_requirements>
 
 ---
@@ -39,14 +41,14 @@ The `department.property` relation is NOT loaded in `ContractService.findAll()` 
 
 ### Core (no new dependencies required)
 
-| Component | Current Version | Purpose | Why Standard |
-|-----------|----------------|---------|--------------|
-| NestJS `@Query()` decorator | Already in use | Add query param filtering to controllers | Project-established pattern (`?departmentId` on contracts) |
-| TypeORM `Repository.find({ where: { ... } })` | Already in use | Filter payments by contractId | Project-established pattern |
-| TypeORM deep relations | Already in use | Load `department.property` via nested relations string | Standard TypeORM pattern |
-| React `useEffect` + `useState` | Already in use | Fetch targeted data on mount | Project-established pattern |
-| `apiFetch<T>()` | Already in use | Type-safe HTTP calls from frontend | Project-established pattern |
-| `EmptyState` component | Already in use | Show empty state when no payments exist | Already imported in TenantDashboard |
+| Component                                     | Current Version | Purpose                                                | Why Standard                                               |
+| --------------------------------------------- | --------------- | ------------------------------------------------------ | ---------------------------------------------------------- |
+| NestJS `@Query()` decorator                   | Already in use  | Add query param filtering to controllers               | Project-established pattern (`?departmentId` on contracts) |
+| TypeORM `Repository.find({ where: { ... } })` | Already in use  | Filter payments by contractId                          | Project-established pattern                                |
+| TypeORM deep relations                        | Already in use  | Load `department.property` via nested relations string | Standard TypeORM pattern                                   |
+| React `useEffect` + `useState`                | Already in use  | Fetch targeted data on mount                           | Project-established pattern                                |
+| `apiFetch<T>()`                               | Already in use  | Type-safe HTTP calls from frontend                     | Project-established pattern                                |
+| `EmptyState` component                        | Already in use  | Show empty state when no payments exist                | Already imported in TenantDashboard                        |
 
 **No new packages needed.** This phase is purely additive within the existing stack.
 
@@ -111,11 +113,11 @@ Note: `'department'` must still be listed explicitly alongside `'department.prop
 ```typescript
 // Source: project pattern (apiFetch in TenantDashboard.tsx)
 // BEFORE (inefficient):
-apiFetch<Contract[]>(`/contracts`)  // loads all contracts
-  .then(all => all.filter(c => c.tenant?.id === tenantId))
+apiFetch<Contract[]>(`/contracts`) // loads all contracts
+  .then((all) => all.filter((c) => c.tenant?.id === tenantId));
 
 // AFTER (targeted):
-apiFetch<Contract[]>(`/contracts?tenantId=${tenantId}`)
+apiFetch<Contract[]>(`/contracts?tenantId=${tenantId}`);
 ```
 
 ### Pattern 4: EmptyState Component
@@ -148,11 +150,11 @@ The current code uses `<p>` text for the empty case — switching to `EmptyState
 
 ## Don't Hand-Roll
 
-| Problem | Don't Build | Use Instead | Why |
-|---------|-------------|-------------|-----|
-| Property name on contract | Custom join query or separate property fetch | TypeORM nested relation `'department.property'` | TypeORM handles the JOIN; one-line addition to relations array |
-| Payments filtered by contract | Custom pagination/filtering layer | TypeORM `find({ where: { contractId } })` | Standard TypeORM WHERE clause; no custom query builder needed |
-| Empty state UI | Custom inline div | Existing `EmptyState` component | Already imported in TenantDashboard; consistent UX |
+| Problem                       | Don't Build                                  | Use Instead                                     | Why                                                            |
+| ----------------------------- | -------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
+| Property name on contract     | Custom join query or separate property fetch | TypeORM nested relation `'department.property'` | TypeORM handles the JOIN; one-line addition to relations array |
+| Payments filtered by contract | Custom pagination/filtering layer            | TypeORM `find({ where: { contractId } })`       | Standard TypeORM WHERE clause; no custom query builder needed  |
+| Empty state UI                | Custom inline div                            | Existing `EmptyState` component                 | Already imported in TenantDashboard; consistent UX             |
 
 ---
 
@@ -251,14 +253,16 @@ useEffect(() => {
       tenantContracts.sort((a, b) => b.endDate.localeCompare(a.endDate));
       setContracts(tenantContracts);
 
-      const active = tenantContracts.find(c => new Date(c.endDate) >= new Date());
+      const active = tenantContracts.find(
+        (c) => new Date(c.endDate) >= new Date(),
+      );
       if (active) {
         return apiFetch<Payment[]>(`/payments?contractId=${active.id}`);
       }
       return Promise.resolve([]);
     })
     .then(setPayments)
-    .catch(err => {
+    .catch((err) => {
       console.error(err);
       setError('Error al cargar datos del inquilino');
     })
@@ -270,11 +274,11 @@ useEffect(() => {
 
 ## State of the Art
 
-| Old Approach | Current Approach | Notes |
-|--------------|-----------------|-------|
-| Full-table fetch + client filter | Targeted `?tenantId` / `?contractId` filter | This phase introduces the better pattern |
-| `relations: ['tenant', 'department']` | `relations: ['tenant', 'department', 'department.property']` | Additive — no breaking change |
-| Inline `<p>` for no-payments empty state | `EmptyState` component | Satisfies explicit PAY-01 success criterion |
+| Old Approach                             | Current Approach                                             | Notes                                       |
+| ---------------------------------------- | ------------------------------------------------------------ | ------------------------------------------- |
+| Full-table fetch + client filter         | Targeted `?tenantId` / `?contractId` filter                  | This phase introduces the better pattern    |
+| `relations: ['tenant', 'department']`    | `relations: ['tenant', 'department', 'department.property']` | Additive — no breaking change               |
+| Inline `<p>` for no-payments empty state | `EmptyState` component                                       | Satisfies explicit PAY-01 success criterion |
 
 ---
 
@@ -296,23 +300,23 @@ useEffect(() => {
 
 ### Test Framework
 
-| Property | Value |
-|----------|-------|
-| Framework | Jest 30 + ts-jest |
-| Config file | `apps/api/package.json` (inline jest config) |
-| Quick run command | `cd apps/api && npm test -- --testPathPattern="contract\|payment" --passWithNoTests` |
-| Full suite command | `cd apps/api && npm test` |
+| Property           | Value                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------ |
+| Framework          | Jest 30 + ts-jest                                                                    |
+| Config file        | `apps/api/package.json` (inline jest config)                                         |
+| Quick run command  | `cd apps/api && npm test -- --testPathPattern="contract\|payment" --passWithNoTests` |
+| Full suite command | `cd apps/api && npm test`                                                            |
 
 ### Phase Requirements → Test Map
 
-| Req ID | Behavior | Test Type | Automated Command | File Exists? |
-|--------|----------|-----------|-------------------|-------------|
-| CONT-01 | `findAll` with tenantId filter returns contracts with `department.property.name` | unit | `cd apps/api && npm test -- --testPathPattern="contract.service"` | ❌ Wave 0 |
-| CONT-02 | Contract response includes `department.name` | unit | same | ❌ Wave 0 |
-| CONT-03 | Contract response includes `rentAmount` | unit | same | ❌ Wave 0 |
-| CONT-04 | Contract response includes `startDate` / `endDate` | unit | same | ❌ Wave 0 |
-| PAY-01 | `findByContract(contractId)` returns payments for correct contract | unit | `cd apps/api && npm test -- --testPathPattern="payment.service"` | ❌ Wave 0 |
-| PAY-02 | Payment response includes `amount` and `date` | unit | same | ❌ Wave 0 |
+| Req ID  | Behavior                                                                         | Test Type | Automated Command                                                 | File Exists? |
+| ------- | -------------------------------------------------------------------------------- | --------- | ----------------------------------------------------------------- | ------------ |
+| CONT-01 | `findAll` with tenantId filter returns contracts with `department.property.name` | unit      | `cd apps/api && npm test -- --testPathPattern="contract.service"` | ❌ Wave 0    |
+| CONT-02 | Contract response includes `department.name`                                     | unit      | same                                                              | ❌ Wave 0    |
+| CONT-03 | Contract response includes `rentAmount`                                          | unit      | same                                                              | ❌ Wave 0    |
+| CONT-04 | Contract response includes `startDate` / `endDate`                               | unit      | same                                                              | ❌ Wave 0    |
+| PAY-01  | `findByContract(contractId)` returns payments for correct contract               | unit      | `cd apps/api && npm test -- --testPathPattern="payment.service"`  | ❌ Wave 0    |
+| PAY-02  | Payment response includes `amount` and `date`                                    | unit      | same                                                              | ❌ Wave 0    |
 
 ### Sampling Rate
 
@@ -325,7 +329,7 @@ useEffect(() => {
 - [ ] `apps/api/src/contract/contract.service.spec.ts` — covers CONT-01 through CONT-04 (tenantId filter, department.property relation)
 - [ ] `apps/api/src/payment/payment.service.spec.ts` — covers PAY-01, PAY-02 (findByContract filter)
 
-*(Existing `contract.overlap.spec.ts` tests a different concern — contract date overlap logic — not the query filter pattern.)*
+_(Existing `contract.overlap.spec.ts` tests a different concern — contract date overlap logic — not the query filter pattern.)_
 
 ---
 
@@ -351,6 +355,7 @@ useEffect(() => {
 ## Metadata
 
 **Confidence breakdown:**
+
 - Standard stack: HIGH — all libraries already in use; no new dependencies needed
 - Architecture: HIGH — patterns directly observed in existing codebase files
 - Pitfalls: HIGH — decimal-as-string and missing-relation issues confirmed by direct entity inspection

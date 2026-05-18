@@ -32,19 +32,47 @@ export class ContractTermination {
   @Column({ type: 'decimal', precision: 10, scale: 2, name: 'advance_applied' })
   advanceApplied: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, name: 'guarantee_deposit' })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    name: 'guarantee_deposit',
+  })
   guaranteeDeposit: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, name: 'guarantee_deduction' })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+    name: 'guarantee_deduction',
+  })
   guaranteeDeduction: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, name: 'guarantee_return' })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    name: 'guarantee_return',
+  })
   guaranteeReturn: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, name: 'services_cost' })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+    name: 'services_cost',
+  })
   servicesCost: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, name: 'rent_refund' })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+    name: 'rent_refund',
+  })
   rentRefund: number;
 
   @CreateDateColumn({ name: 'created_at' })

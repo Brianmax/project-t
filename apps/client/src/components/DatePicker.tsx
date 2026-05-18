@@ -23,7 +23,11 @@ function toISO(date: Date): string {
 function formatDisplay(s: string): string {
   const date = parseDate(s);
   if (!date) return '';
-  return date.toLocaleDateString('es-PE', { day: '2-digit', month: 'long', year: 'numeric' });
+  return date.toLocaleDateString('es-PE', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
 }
 
 // ── DayPicker classNames ───────────────────────────────────────────────────────
@@ -42,13 +46,15 @@ const dayPickerClassNames = {
     'hover:bg-surface-raised hover:text-on-surface transition-colors duration-150',
   month_grid: 'w-full',
   weekdays: 'flex mb-1',
-  weekday: 'w-9 h-7 flex items-center justify-center text-[10px] font-bold text-on-surface-ghost uppercase tracking-wider',
+  weekday:
+    'w-9 h-7 flex items-center justify-center text-[10px] font-bold text-on-surface-ghost uppercase tracking-wider',
   week: 'flex',
-  day: '',
+  day: 'w-9 h-9 flex items-center justify-center',
   day_button:
     'w-9 h-9 text-sm rounded-xl font-medium text-on-surface transition-all duration-150 ' +
     'hover:bg-surface-raised focus:outline-none focus:ring-2 focus:ring-primary-500/30 cursor-pointer',
-  selected: '!bg-primary-600 !text-white hover:!bg-primary-700 shadow-sm shadow-primary-600/20',
+  selected:
+    '!bg-primary-600 !text-white hover:!bg-primary-700 shadow-sm shadow-primary-600/20',
   today: '!font-bold !text-primary-600',
   outside: '!text-on-surface-ghost opacity-30',
   disabled: '!opacity-25 !cursor-not-allowed pointer-events-none',
@@ -97,10 +103,13 @@ export default function DatePicker({
       if (
         triggerRef.current?.contains(target) ||
         popoverRef.current?.contains(target)
-      ) return;
+      )
+        return;
       setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
     document.addEventListener('mousedown', onMouse);
     document.addEventListener('keydown', onKey);
     return () => {
@@ -116,7 +125,9 @@ export default function DatePicker({
     open
       ? 'border-primary-500 ring-4 ring-primary-500/10 dark:ring-primary-400/15'
       : 'border-border hover:border-on-surface-ghost',
-    disabled ? 'bg-surface-alt text-on-surface-faint cursor-not-allowed' : 'cursor-pointer',
+    disabled
+      ? 'bg-surface-alt text-on-surface-faint cursor-not-allowed'
+      : 'cursor-pointer',
   ].join(' ');
 
   return (
@@ -124,7 +135,7 @@ export default function DatePicker({
       <button
         ref={triggerRef}
         type="button"
-        onClick={() => open ? setOpen(false) : openPopover()}
+        onClick={() => (open ? setOpen(false) : openPopover())}
         disabled={disabled}
         className={triggerCls}
       >
@@ -147,28 +158,41 @@ export default function DatePicker({
         />
       )}
 
-      {open && createPortal(
-        <div
-          ref={popoverRef}
-          style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}
-          className="bg-surface border border-border rounded-2xl shadow-2xl shadow-black/10 dark:shadow-black/30 animate-slide-up"
-        >
-          <DayPicker
-            mode="single"
-            selected={selected}
-            defaultMonth={selected ?? new Date()}
-            onSelect={(date) => {
-              if (date) { onChange(toISO(date)); setOpen(false); }
+      {open &&
+        createPortal(
+          <div
+            ref={popoverRef}
+            style={{
+              position: 'fixed',
+              top: pos.top,
+              left: pos.left,
+              zIndex: 9999,
             }}
-            components={{
-              Chevron: ({ orientation }: { orientation?: string }) =>
-                orientation === 'left' ? <ChevronLeft size={13} /> : <ChevronRight size={13} />,
-            }}
-            classNames={dayPickerClassNames}
-          />
-        </div>,
-        document.body,
-      )}
+            className="bg-surface border border-border rounded-2xl shadow-2xl shadow-black/10 dark:shadow-black/30 animate-slide-up"
+          >
+            <DayPicker
+              mode="single"
+              selected={selected}
+              defaultMonth={selected ?? new Date()}
+              onSelect={(date) => {
+                if (date) {
+                  onChange(toISO(date));
+                  setOpen(false);
+                }
+              }}
+              components={{
+                Chevron: ({ orientation }: { orientation?: string }) =>
+                  orientation === 'left' ? (
+                    <ChevronLeft size={13} />
+                  ) : (
+                    <ChevronRight size={13} />
+                  ),
+              }}
+              classNames={dayPickerClassNames}
+            />
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

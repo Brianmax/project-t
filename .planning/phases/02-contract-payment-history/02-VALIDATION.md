@@ -15,13 +15,13 @@ created: 2026-03-11
 
 ## Test Infrastructure
 
-| Property | Value |
-|----------|-------|
-| **Framework** | Jest (backend) — `apps/api` |
-| **Config file** | `apps/api/jest.config.js` |
-| **Quick run command** | `cd apps/api && npm test -- --testPathPattern="contract|payment"` |
-| **Full suite command** | `cd apps/api && npm test` |
-| **Estimated runtime** | ~15 seconds |
+| Property               | Value                                                   |
+| ---------------------- | ------------------------------------------------------- | --------- |
+| **Framework**          | Jest (backend) — `apps/api`                             |
+| **Config file**        | `apps/api/jest.config.js`                               |
+| **Quick run command**  | `cd apps/api && npm test -- --testPathPattern="contract | payment"` |
+| **Full suite command** | `cd apps/api && npm test`                               |
+| **Estimated runtime**  | ~15 seconds                                             |
 
 ---
 
@@ -36,11 +36,11 @@ created: 2026-03-11
 
 ## Per-Task Verification Map
 
-| Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
-|---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 2-01-01 | 02-01 | 1 | CONT-01–04 | unit | `cd apps/api && npm test -- --testPathPattern=contract` | ✅ | ⬜ pending |
-| 2-01-02 | 02-01 | 1 | PAY-01–02 | unit | `cd apps/api && npm test -- --testPathPattern=payment` | ✅ | ⬜ pending |
-| 2-02-01 | 02-02 | 1 | CONT-01–04, PAY-01–02 | manual | Browse /tenants/:id, verify contract + payments sections | ✅ | ⬜ pending |
+| Task ID | Plan  | Wave | Requirement           | Test Type | Automated Command                                        | File Exists | Status     |
+| ------- | ----- | ---- | --------------------- | --------- | -------------------------------------------------------- | ----------- | ---------- |
+| 2-01-01 | 02-01 | 1    | CONT-01–04            | unit      | `cd apps/api && npm test -- --testPathPattern=contract`  | ✅          | ⬜ pending |
+| 2-01-02 | 02-01 | 1    | PAY-01–02             | unit      | `cd apps/api && npm test -- --testPathPattern=payment`   | ✅          | ⬜ pending |
+| 2-02-01 | 02-02 | 1    | CONT-01–04, PAY-01–02 | manual    | Browse /tenants/:id, verify contract + payments sections | ✅          | ⬜ pending |
 
 ---
 
@@ -52,11 +52,11 @@ Existing infrastructure covers all phase requirements. The existing Jest suite c
 
 ## Manual-Only Verifications
 
-| Behavior | Requirement | Why Manual | Test Instructions |
-|----------|-------------|------------|-------------------|
-| Contract section shows property name, department, rent, dates | CONT-01–04 | UI rendering | Open /tenants/:id, verify all contract fields visible |
-| Payment list shows amount and date per payment | PAY-01–02 | UI rendering | Open /tenants/:id with a tenant that has payments, verify list |
-| Empty state shown when no payments | PAY-01 | UI rendering | Open /tenants/:id for tenant with no payments, verify EmptyState component |
+| Behavior                                                      | Requirement | Why Manual   | Test Instructions                                                          |
+| ------------------------------------------------------------- | ----------- | ------------ | -------------------------------------------------------------------------- |
+| Contract section shows property name, department, rent, dates | CONT-01–04  | UI rendering | Open /tenants/:id, verify all contract fields visible                      |
+| Payment list shows amount and date per payment                | PAY-01–02   | UI rendering | Open /tenants/:id with a tenant that has payments, verify list             |
+| Empty state shown when no payments                            | PAY-01      | UI rendering | Open /tenants/:id for tenant with no payments, verify EmptyState component |
 
 ---
 

@@ -7,15 +7,17 @@
 ---
 
 <phase_requirements>
+
 ## Phase Requirements
 
-| ID | Description | Research Support |
-|----|-------------|-----------------|
-| NAV-01 | User can click a tenant card in `/tenants` and navigate to `/tenants/:id` | Route exists; Tenants.tsx rows need `<Link>` wrapping |
-| PERS-01 | Tenant detail page displays tenant's full name | `TenantDashboard.tsx` already renders `tenant.name` |
-| PERS-02 | Tenant detail page displays tenant's phone number | `TenantDashboard.tsx` already renders `tenant.phone` (optional) |
-| PERS-03 | Tenant detail page displays tenant's email address | `TenantDashboard.tsx` already renders `tenant.email` |
-| PERS-04 | Tenant detail page displays tenant's document/ID number | `documentId` field does NOT exist on Tenant entity — must add to entity + DTO + UI |
+| ID      | Description                                                               | Research Support                                                                   |
+| ------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| NAV-01  | User can click a tenant card in `/tenants` and navigate to `/tenants/:id` | Route exists; Tenants.tsx rows need `<Link>` wrapping                              |
+| PERS-01 | Tenant detail page displays tenant's full name                            | `TenantDashboard.tsx` already renders `tenant.name`                                |
+| PERS-02 | Tenant detail page displays tenant's phone number                         | `TenantDashboard.tsx` already renders `tenant.phone` (optional)                    |
+| PERS-03 | Tenant detail page displays tenant's email address                        | `TenantDashboard.tsx` already renders `tenant.email`                               |
+| PERS-04 | Tenant detail page displays tenant's document/ID number                   | `documentId` field does NOT exist on Tenant entity — must add to entity + DTO + UI |
+
 </phase_requirements>
 
 ---
@@ -34,16 +36,16 @@ The two genuine gaps are: (1) the tenant list in `Tenants.tsx` renders rows as p
 
 ### Core
 
-| Library | Version | Purpose | Why Standard |
-|---------|---------|---------|--------------|
-| react-router-dom | v7 (already installed) | Client-side routing, `useParams`, `<Link>` | Already used throughout the app |
-| TypeORM | already in use | Entity definition, auto-sync schema | Project ORM; `synchronize: true` removes need for manual migrations |
-| class-validator | already in use | DTO validation decorators | Global `ValidationPipe` enforces it on all POST/PATCH bodies |
+| Library          | Version                | Purpose                                    | Why Standard                                                        |
+| ---------------- | ---------------------- | ------------------------------------------ | ------------------------------------------------------------------- |
+| react-router-dom | v7 (already installed) | Client-side routing, `useParams`, `<Link>` | Already used throughout the app                                     |
+| TypeORM          | already in use         | Entity definition, auto-sync schema        | Project ORM; `synchronize: true` removes need for manual migrations |
+| class-validator  | already in use         | DTO validation decorators                  | Global `ValidationPipe` enforces it on all POST/PATCH bodies        |
 
 ### Supporting
 
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
+| Library      | Version           | Purpose                                    | When to Use                               |
+| ------------ | ----------------- | ------------------------------------------ | ----------------------------------------- |
 | lucide-react | already installed | Icons (e.g., `IdCard` for document number) | Already used for all icons in the project |
 
 ### Alternatives Considered
@@ -81,6 +83,7 @@ apps/
 **When to use:** Whenever a list item should navigate to a detail page without a full page reload.
 
 **Example:**
+
 ```typescript
 // Source: apps/client/src/pages/Tenants.tsx (current pattern to modify)
 // Current: plain <tr> with no navigation
@@ -104,6 +107,7 @@ apps/
 **When to use:** Any time a new optional field is added to an existing entity in this project.
 
 **Example:**
+
 ```typescript
 // Source: apps/api/src/tenant/entities/tenant.entity.ts
 @Entity()
@@ -131,6 +135,7 @@ export class Tenant {
 **What:** Add an optional validated field to `CreateTenantDto`. `UpdateTenantDto` inherits via `PartialType` so no change needed there.
 
 **Example:**
+
 ```typescript
 // Source: apps/api/src/tenant/dto/create-tenant.dto.ts
 export class CreateTenantDto {
@@ -170,11 +175,11 @@ export class CreateTenantDto {
 
 ## Don't Hand-Roll
 
-| Problem | Don't Build | Use Instead | Why |
-|---------|-------------|-------------|-----|
-| Client-side navigation | Custom `window.location.href` assignment | `<Link to="...">` from react-router-dom | Prevents full page reload; consistent with every other nav link in the app |
-| Database schema migration | Manual SQL `ALTER TABLE` | TypeORM `synchronize: true` | Already configured; runs on startup automatically |
-| Route protection | Custom auth check in page component | Existing `<ProtectedRoute>` wrapper in `App.tsx` | Route is already inside `<ProtectedRoute>` — nothing to add |
+| Problem                   | Don't Build                              | Use Instead                                      | Why                                                                        |
+| ------------------------- | ---------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------- |
+| Client-side navigation    | Custom `window.location.href` assignment | `<Link to="...">` from react-router-dom          | Prevents full page reload; consistent with every other nav link in the app |
+| Database schema migration | Manual SQL `ALTER TABLE`                 | TypeORM `synchronize: true`                      | Already configured; runs on startup automatically                          |
+| Route protection          | Custom auth check in page component      | Existing `<ProtectedRoute>` wrapper in `App.tsx` | Route is already inside `<ProtectedRoute>` — nothing to add                |
 
 ---
 
@@ -270,12 +275,13 @@ import { Link } from 'react-router-dom';
 
 ## State of the Art
 
-| Old Approach | Current Approach | Impact |
-|--------------|------------------|--------|
-| Numeric IDs in routes | UUID strings in routes | `useParams()` returns string directly; no `parseInt()` needed |
-| Manual SQL migrations | TypeORM `synchronize: true` | New columns added automatically on restart |
+| Old Approach          | Current Approach            | Impact                                                        |
+| --------------------- | --------------------------- | ------------------------------------------------------------- |
+| Numeric IDs in routes | UUID strings in routes      | `useParams()` returns string directly; no `parseInt()` needed |
+| Manual SQL migrations | TypeORM `synchronize: true` | New columns added automatically on restart                    |
 
 **Pre-existing issues (not blocking Phase 1):**
+
 - `Tenants.tsx` line 75: `d.property?.id === Number(selectedPropertyId)` — UUID vs number comparison bug. Pre-existing, out of scope.
 
 ---
@@ -298,22 +304,22 @@ import { Link } from 'react-router-dom';
 
 ### Test Framework
 
-| Property | Value |
-|----------|-------|
-| Framework | Jest + NestJS testing utilities (apps/api) |
-| Config file | `apps/api/package.json` (jest config inline) |
-| Quick run command | `cd apps/api && npm test -- --testPathPattern=tenant` |
-| Full suite command | `cd apps/api && npm test` |
+| Property           | Value                                                 |
+| ------------------ | ----------------------------------------------------- |
+| Framework          | Jest + NestJS testing utilities (apps/api)            |
+| Config file        | `apps/api/package.json` (jest config inline)          |
+| Quick run command  | `cd apps/api && npm test -- --testPathPattern=tenant` |
+| Full suite command | `cd apps/api && npm test`                             |
 
 ### Phase Requirements → Test Map
 
-| Req ID | Behavior | Test Type | Automated Command | File Exists? |
-|--------|----------|-----------|-------------------|-------------|
-| NAV-01 | Clicking tenant row navigates to `/tenants/:id` | manual (React Router navigation) | n/a — browser test | N/A — manual only |
-| PERS-01 | Detail page displays tenant name | manual (visual verification) | n/a | N/A — manual only |
-| PERS-02 | Detail page displays phone | manual (visual verification) | n/a | N/A — manual only |
-| PERS-03 | Detail page displays email | manual (visual verification) | n/a | N/A — manual only |
-| PERS-04 | Detail page displays documentId | unit — TenantService.findOne returns documentId | `cd apps/api && npm test -- --testPathPattern=tenant` | ❌ Wave 0 |
+| Req ID  | Behavior                                        | Test Type                                       | Automated Command                                     | File Exists?      |
+| ------- | ----------------------------------------------- | ----------------------------------------------- | ----------------------------------------------------- | ----------------- |
+| NAV-01  | Clicking tenant row navigates to `/tenants/:id` | manual (React Router navigation)                | n/a — browser test                                    | N/A — manual only |
+| PERS-01 | Detail page displays tenant name                | manual (visual verification)                    | n/a                                                   | N/A — manual only |
+| PERS-02 | Detail page displays phone                      | manual (visual verification)                    | n/a                                                   | N/A — manual only |
+| PERS-03 | Detail page displays email                      | manual (visual verification)                    | n/a                                                   | N/A — manual only |
+| PERS-04 | Detail page displays documentId                 | unit — TenantService.findOne returns documentId | `cd apps/api && npm test -- --testPathPattern=tenant` | ❌ Wave 0         |
 
 ### Sampling Rate
 
@@ -349,6 +355,7 @@ import { Link } from 'react-router-dom';
 ## Metadata
 
 **Confidence breakdown:**
+
 - Standard stack: HIGH — all libraries directly verified from source files
 - Architecture: HIGH — all patterns verified from existing page and component files
 - Pitfalls: HIGH — documentId nullable requirement is a direct inference from entity inspection; route duplication risk is directly observable from App.tsx

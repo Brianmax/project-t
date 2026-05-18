@@ -7,6 +7,7 @@
 **Overall:** Full-stack monorepo with a domain-driven NestJS REST API backend and a React SPA frontend, communicating over HTTP with JWT authentication.
 
 **Key Characteristics:**
+
 - Backend is NestJS with a module-per-domain pattern; each domain owns its entity, DTOs, controller, service, and module file
 - Frontend is a React SPA where each route maps to one page component; all server communication goes through helper functions in `lib/api.ts`
 - Authentication uses short-lived JWT access tokens held in-memory plus long-lived refresh tokens in httpOnly cookies
@@ -16,6 +17,7 @@
 ## Layers
 
 **Domain Modules (Backend):**
+
 - Purpose: Encapsulate business logic for one domain entity (property, department, tenant, contract, etc.)
 - Location: `apps/api/src/[module-name]/`
 - Contains: Entity class, DTOs, controller (routing), service (business logic), module definition
@@ -23,6 +25,7 @@
 - Used by: `AppModule` which imports all domain modules; controllers are reached via HTTP
 
 **Auth Layer (Backend):**
+
 - Purpose: JWT issuance, validation, refresh, logout, role enforcement
 - Location: `apps/api/src/auth/`
 - Contains: `AuthController`, `AuthService`, `JwtGuard` (global access guard), `JwtRefreshGuard`, `@Public()` decorator, `@CurrentUser()` decorator, `@Roles()` decorator
@@ -30,12 +33,14 @@
 - Used by: `AppModule` registers `JwtGuard` as `APP_GUARD`; `AdminModule` uses `RolesGuard`
 
 **Global Guard (Backend):**
+
 - Purpose: Protect all routes by default; opt-out via `@Public()`
 - Location: `apps/api/src/auth/guards/jwt.guard.ts`
 - Registered as: `{ provide: APP_GUARD, useClass: JwtGuard }` in `apps/api/src/app.module.ts`
 - Attaches: Decoded `JwtPayload` to `request.user`
 
 **Cross-Domain Services (Backend):**
+
 - Purpose: Calculations that span multiple domain tables (not a single entity owner)
 - Examples:
   - `apps/api/src/consumption/consumption.service.ts` — reads `DepartmentMeter` + `MeterReading` + `Property` to compute utility costs
@@ -44,18 +49,21 @@
   - `apps/api/src/contract-termination/contract-termination.service.ts` — persists and resolves contract terminations
 
 **Page Layer (Frontend):**
+
 - Purpose: One component per route; owns local state, data fetching via `useEffect`, and page-specific UI
 - Location: `apps/client/src/pages/`
 - Depends on: `apiFetch`, `apiPost`, `apiPatch`, `apiDelete` from `lib/api.ts`; shared components from `components/`
 - Used by: React Router routes in `apps/client/src/App.tsx`
 
 **Context Layer (Frontend):**
+
 - Purpose: App-wide state shared across the component tree
 - Location: `apps/client/src/contexts/`
 - Contains: `AuthContext.tsx` — user identity, access token, login/logout/register, silent refresh
 - Used by: `ProtectedRoute`, `AdminRoute`, pages that need auth state
 
 **Component Layer (Frontend):**
+
 - Purpose: Reusable UI primitives; not tied to domain data
 - Location: `apps/client/src/components/`
 - Contains: `Layout`, `Sidebar`, `Modal`, `PageHeader`, `EmptyState`, `Spinner`, `DatePicker`, `ThemeToggle`, `ProtectedRoute`, `AdminRoute`
@@ -104,31 +112,37 @@
 ## Key Abstractions
 
 **NestJS Domain Module:**
+
 - Purpose: Self-contained vertical slice for one business entity
 - Pattern: Each module exports its service if needed by siblings; registers its entity with `TypeOrmModule.forFeature([Entity])`
 - Examples: `apps/api/src/property/property.module.ts`, `apps/api/src/contract/contract.module.ts`
 
 **TypeORM Entity:**
+
 - Purpose: Defines table schema and ORM relationships via decorators
 - Pattern: `@PrimaryGeneratedColumn('uuid')` for IDs; `@ManyToOne` + explicit FK `@Column` for foreign keys; `@CreateDateColumn`/`@UpdateDateColumn` for audit columns
 - Examples: `apps/api/src/contract/entities/contract.entity.ts`, `apps/api/src/receipt/entities/receipt.entity.ts`, `apps/api/src/user/entities/user.entity.ts`
 
 **DTO (Data Transfer Object):**
+
 - Purpose: Validates and shapes incoming request bodies; decorated with `class-validator` annotations
 - Pattern: `CreateXxxDto` for creation, `UpdateXxxDto` extends `PartialType(CreateXxxDto)` for updates
 - Location: `apps/api/src/[module]/dto/`
 
 **apiFetch / apiPost / apiPatch / apiDelete:**
+
 - Purpose: Centralized HTTP client with auth header injection and 401 silent-refresh retry
 - Location: `apps/client/src/lib/api.ts`
 - Pattern: Generic typed return `apiFetch<T>(path, options?)` → parses JSON as `T`
 
 **ReceiptStatus Enum:**
+
 - Purpose: Tracks billing receipt lifecycle
 - Values: `pending_review` → `approved` or `denied`
 - Location: `apps/api/src/receipt/entities/receipt.entity.ts`
 
 **@Public() Decorator:**
+
 - Purpose: Opt specific routes out of the global `JwtGuard`
 - Location: `apps/api/src/auth/decorators/public.decorator.ts`
 - Usage: Applied to `POST /auth/login`, `POST /auth/register`, `POST /auth/refresh`
@@ -136,18 +150,22 @@
 ## Entry Points
 
 **API Bootstrap:**
+
 - Location: `apps/api/src/main.ts`
 - Responsibilities: Creates NestJS app, attaches `cookie-parser`, configures CORS (origin `http://localhost:5173`), registers global `ValidationPipe`, listens on port 3001
 
 **API Root Module:**
+
 - Location: `apps/api/src/app.module.ts`
 - Responsibilities: Imports all domain modules, TypeORM global config, ConfigModule; registers `JwtGuard` as global APP_GUARD
 
 **Client Root:**
+
 - Location: `apps/client/src/App.tsx`
 - Responsibilities: Wraps app in `BrowserRouter` + `AuthProvider`; declares all React Router routes with `ProtectedRoute` and `AdminRoute` guards
 
 **Client Entry:**
+
 - Location: `apps/client/src/main.tsx` (standard Vite entry)
 - Triggers: Mounts `<App />` into DOM
 
@@ -156,6 +174,7 @@
 **Strategy:** Throw-and-catch at service layer; NestJS exception filters handle HTTP serialization
 
 **Patterns:**
+
 - Services throw `NotFoundException` when a required entity is not found; NestJS serializes this to `404`
 - Services throw `BadRequestException` for business rule violations (e.g., department not available); serialized to `400`
 - Frontend `apiFetch` throws `Error` with response body text on non-OK responses; pages catch errors and set local `error` state string for display
@@ -171,4 +190,4 @@
 
 ---
 
-*Architecture analysis: 2026-03-09*
+_Architecture analysis: 2026-03-09_

@@ -15,13 +15,13 @@ created: 2026-03-11
 
 ## Test Infrastructure
 
-| Property | Value |
-|----------|-------|
-| **Framework** | Jest (backend) — `apps/api` |
-| **Config file** | `apps/api/jest.config.js` |
-| **Quick run command** | `cd apps/api && npm test -- --testPathPattern=tenant` |
-| **Full suite command** | `cd apps/api && npm test` |
-| **Estimated runtime** | ~10 seconds |
+| Property               | Value                                                 |
+| ---------------------- | ----------------------------------------------------- |
+| **Framework**          | Jest (backend) — `apps/api`                           |
+| **Config file**        | `apps/api/jest.config.js`                             |
+| **Quick run command**  | `cd apps/api && npm test -- --testPathPattern=tenant` |
+| **Full suite command** | `cd apps/api && npm test`                             |
+| **Estimated runtime**  | ~10 seconds                                           |
 
 ---
 
@@ -36,11 +36,11 @@ created: 2026-03-11
 
 ## Per-Task Verification Map
 
-| Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
-|---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 1-01-01 | 01 | 1 | NAV-01 | manual | navigate to /tenants, click card | ✅ | ⬜ pending |
-| 1-01-02 | 01 | 1 | PERS-04 | unit | `cd apps/api && npm test -- --testPathPattern=tenant` | ✅ | ⬜ pending |
-| 1-01-03 | 01 | 1 | PERS-01–04 | manual | navigate to /tenants/:id, verify all fields | ✅ | ⬜ pending |
+| Task ID | Plan | Wave | Requirement | Test Type | Automated Command                                     | File Exists | Status     |
+| ------- | ---- | ---- | ----------- | --------- | ----------------------------------------------------- | ----------- | ---------- |
+| 1-01-01 | 01   | 1    | NAV-01      | manual    | navigate to /tenants, click card                      | ✅          | ⬜ pending |
+| 1-01-02 | 01   | 1    | PERS-04     | unit      | `cd apps/api && npm test -- --testPathPattern=tenant` | ✅          | ⬜ pending |
+| 1-01-03 | 01   | 1    | PERS-01–04  | manual    | navigate to /tenants/:id, verify all fields           | ✅          | ⬜ pending |
 
 ---
 
@@ -52,11 +52,11 @@ Existing infrastructure covers all phase requirements. No new test files needed 
 
 ## Manual-Only Verifications
 
-| Behavior | Requirement | Why Manual | Test Instructions |
-|----------|-------------|------------|-------------------|
-| Clicking tenant card navigates to detail page | NAV-01 | Frontend routing — no automated test | Open /tenants, click any card, verify URL changes to /tenants/:id |
-| Detail page shows all personal fields | PERS-01–04 | UI rendering — no automated test | Open /tenants/:id, verify name, phone, email, documentId all appear |
-| Protected route redirects unauthenticated | NAV-01 | Auth flow — existing pattern | Logout, navigate to /tenants/:id, verify redirect to login |
+| Behavior                                      | Requirement | Why Manual                           | Test Instructions                                                   |
+| --------------------------------------------- | ----------- | ------------------------------------ | ------------------------------------------------------------------- |
+| Clicking tenant card navigates to detail page | NAV-01      | Frontend routing — no automated test | Open /tenants, click any card, verify URL changes to /tenants/:id   |
+| Detail page shows all personal fields         | PERS-01–04  | UI rendering — no automated test     | Open /tenants/:id, verify name, phone, email, documentId all appear |
+| Protected route redirects unauthenticated     | NAV-01      | Auth flow — existing pattern         | Logout, navigate to /tenants/:id, verify redirect to login          |
 
 ---
 

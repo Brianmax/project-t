@@ -55,9 +55,6 @@ import { JwtGuard } from './auth/guards/jwt.guard';
     SeedModule,
   ],
   controllers: [AppController],
-  providers: [
-    AppService,
-    { provide: APP_GUARD, useClass: JwtGuard },
-  ],
+  providers: [AppService, { provide: APP_GUARD, useClass: JwtGuard }],
 })
 export class AppModule {}

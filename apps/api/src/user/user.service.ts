@@ -30,13 +30,21 @@ export class UserService {
     return this.userRepo.findOneBy({ id });
   }
 
-  async updateRefreshTokenHash(userId: string, hash: string | null): Promise<void> {
+  async updateRefreshTokenHash(
+    userId: string,
+    hash: string | null,
+  ): Promise<void> {
     await this.userRepo.update(userId, { refreshTokenHash: hash });
   }
 
   async createAdmin(email: string, password: string): Promise<User> {
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = this.userRepo.create({ email, passwordHash, role: 'admin', status: 'approved' });
+    const user = this.userRepo.create({
+      email,
+      passwordHash,
+      role: 'admin',
+      status: 'approved',
+    });
     return this.userRepo.save(user);
   }
 
@@ -44,7 +52,9 @@ export class UserService {
     return this.userRepo.findOneBy({ role: 'admin' });
   }
 
-  findAllNonAdmin(): Promise<Pick<User, 'id' | 'email' | 'status' | 'createdAt'>[]> {
+  findAllNonAdmin(): Promise<
+    Pick<User, 'id' | 'email' | 'status' | 'createdAt'>[]
+  > {
     return this.userRepo.find({
       where: { role: Not('admin' as const) },
       select: ['id', 'email', 'status', 'createdAt'],
@@ -52,7 +62,10 @@ export class UserService {
     });
   }
 
-  async updateStatus(userId: string, status: 'pending' | 'approved' | 'rejected'): Promise<void> {
+  async updateStatus(
+    userId: string,
+    status: 'pending' | 'approved' | 'rejected',
+  ): Promise<void> {
     await this.userRepo.update(userId, { status });
   }
 }

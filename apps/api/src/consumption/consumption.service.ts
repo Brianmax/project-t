@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -10,6 +10,7 @@ import { Property } from '../property/entities/property.entity';
 
 @Injectable()
 export class ConsumptionService {
+  private readonly logger = new Logger(ConsumptionService.name);
   private readonly COST_PER_UNIT_LIGHT = 0.25; // Example cost per unit for light
   private readonly COST_PER_UNIT_WATER = 0.15; // Example cost per unit for water
 
@@ -27,6 +28,8 @@ export class ConsumptionService {
     meterType: MeterType,
     month: number,
     year: number,
+    startDay?: number,
+    endDay?: number,
   ): Promise<{ consumption: number; cost: number }> {
     const departmentMeter = await this.departmentMeterRepository.findOne({
       where: { departmentId, meterType },
@@ -43,32 +46,62 @@ export class ConsumptionService {
         })
       : null;
 
-    const currentReading = await this.meterReadingRepository.findOne({
-      where: {
-        departmentMeterId: departmentMeter.id,
-        billingMonth: month,
-        billingYear: year,
-      },
-      order: { date: 'DESC' },
-    });
+    let currentReading: MeterReading | null;
+    let previousReading: MeterReading | null;
 
-    if (!currentReading) {
-      return { consumption: 0, cost: 0 };
+    if (startDay !== undefined && endDay !== undefined) {
+      const rangeStart = new Date(year, month - 1, startDay);
+      const rangeEnd = new Date(year, month - 1, endDay);
+
+      currentReading = await this.meterReadingRepository
+        .createQueryBuilder('mr')
+        .where('mr.departmentMeterId = :meterId', {
+          meterId: departmentMeter.id,
+        })
+        .andWhere('mr.date <= :rangeEnd', { rangeEnd })
+        .orderBy('mr.date', 'DESC')
+        .getOne();
+
+      if (!currentReading) {
+        return { consumption: 0, cost: 0 };
+      }
+
+      previousReading = await this.meterReadingRepository
+        .createQueryBuilder('mr')
+        .where('mr.departmentMeterId = :meterId', {
+          meterId: departmentMeter.id,
+        })
+        .andWhere('mr.date < :rangeStart', { rangeStart })
+        .orderBy('mr.date', 'DESC')
+        .getOne();
+    } else {
+      currentReading = await this.meterReadingRepository.findOne({
+        where: {
+          departmentMeterId: departmentMeter.id,
+          billingMonth: month,
+          billingYear: year,
+        },
+        order: { date: 'DESC' },
+      });
+
+      if (!currentReading) {
+        return { consumption: 0, cost: 0 };
+      }
+
+      previousReading = await this.meterReadingRepository
+        .createQueryBuilder('mr')
+        .where('mr.departmentMeterId = :meterId', {
+          meterId: departmentMeter.id,
+        })
+        .andWhere(
+          '(mr.billingYear < :year OR (mr.billingYear = :year AND mr.billingMonth < :month))',
+          { year, month },
+        )
+        .orderBy('mr.billingYear', 'DESC')
+        .addOrderBy('mr.billingMonth', 'DESC')
+        .addOrderBy('mr.date', 'DESC')
+        .getOne();
     }
-
-    const previousReading = await this.meterReadingRepository
-      .createQueryBuilder('mr')
-      .where('mr.departmentMeterId = :meterId', {
-        meterId: departmentMeter.id,
-      })
-      .andWhere(
-        '(mr.billingYear < :year OR (mr.billingYear = :year AND mr.billingMonth < :month))',
-        { year, month },
-      )
-      .orderBy('mr.billingYear', 'DESC')
-      .addOrderBy('mr.billingMonth', 'DESC')
-      .addOrderBy('mr.date', 'DESC')
-      .getOne();
 
     if (!previousReading) {
       return { consumption: 0, cost: 0 };
@@ -76,13 +109,25 @@ export class ConsumptionService {
 
     const consumption =
       Number(currentReading.reading) - Number(previousReading.reading);
+
+    if (consumption < 0) {
+      this.logger.warn(
+        `Negative consumption detected for meter ${departmentMeter.id}: ` +
+          `current=${currentReading.reading} previous=${previousReading.reading} consumption=${consumption}`,
+      );
+      return { consumption: 0, cost: 0 };
+    }
     let cost = 0;
 
     if (meterType === MeterType.LIGHT) {
-      const rate = Number(property?.lightCostPerUnit ?? this.COST_PER_UNIT_LIGHT);
+      const rate = Number(
+        property?.lightCostPerUnit ?? this.COST_PER_UNIT_LIGHT,
+      );
       cost = consumption * rate;
     } else if (meterType === MeterType.WATER) {
-      const rate = Number(property?.waterCostPerUnit ?? this.COST_PER_UNIT_WATER);
+      const rate = Number(
+        property?.waterCostPerUnit ?? this.COST_PER_UNIT_WATER,
+      );
       cost = consumption * rate;
     }
 
@@ -148,6 +193,20 @@ export class ConsumptionService {
 
       const consumption =
         Number(readings[0].reading) - Number(readings[1].reading);
+
+      if (consumption < 0) {
+        this.logger.warn(
+          `Negative consumption detected for meter ${meter.id}: ` +
+            `current=${readings[0].reading} previous=${readings[1].reading} consumption=${consumption}`,
+        );
+        result[meterType] = {
+          consumption: 0,
+          cost: 0,
+          lastReading: Number(readings[0].reading),
+          prevReading: Number(readings[1].reading),
+        };
+        continue;
+      }
       const rate =
         meterType === MeterType.LIGHT
           ? Number(property?.lightCostPerUnit ?? this.COST_PER_UNIT_LIGHT)

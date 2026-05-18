@@ -3,26 +3,25 @@ import { Link } from 'react-router-dom';
 import { Building2, UserPlus, Clock } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { inputCls, labelCls, btnPrimaryCls } from '../lib/styles';
+import { showError } from '../lib/toast';
 
 export default function Register() {
   const { register } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [registered, setRegistered] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setError('');
 
     if (password !== confirmPassword) {
-      setError('Las contraseñas no coinciden');
+      showError('Las contraseñas no coinciden');
       return;
     }
     if (password.length < 8) {
-      setError('La contraseña debe tener al menos 8 caracteres');
+      showError('La contraseña debe tener al menos 8 caracteres');
       return;
     }
 
@@ -31,7 +30,7 @@ export default function Register() {
       await register(email, password);
       setRegistered(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al registrarse');
+      showError(err instanceof Error ? err.message : 'Error al registrarse');
     } finally {
       setLoading(false);
     }
@@ -42,7 +41,9 @@ export default function Register() {
       <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-lg shadow-primary-500/20 mb-4">
         <Building2 size={22} className="text-white" />
       </div>
-      <h1 className="text-2xl font-bold text-on-surface-strong tracking-tight">PropManager</h1>
+      <h1 className="text-2xl font-bold text-on-surface-strong tracking-tight">
+        PropManager
+      </h1>
       <p className="text-sm text-on-surface-muted mt-1">Crea tu cuenta</p>
     </div>
   );
@@ -56,13 +57,19 @@ export default function Register() {
             <div className="w-12 h-12 rounded-full bg-status-warning-bg border border-status-warning-border flex items-center justify-center mx-auto mb-4">
               <Clock size={22} className="text-status-warning-fg" />
             </div>
-            <h2 className="text-lg font-semibold text-on-surface-strong mb-2">¡Cuenta creada!</h2>
+            <h2 className="text-lg font-semibold text-on-surface-strong mb-2">
+              ¡Cuenta creada!
+            </h2>
             <p className="text-sm text-on-surface-muted">
-              Un administrador revisará y aprobará tu acceso. Recibirás confirmación pronto.
+              Un administrador revisará y aprobará tu acceso. Recibirás
+              confirmación pronto.
             </p>
           </div>
           <p className="text-center text-sm text-on-surface-muted mt-4">
-            <Link to="/login" className="text-primary-600 hover:text-primary-700 font-medium">
+            <Link
+              to="/login"
+              className="text-primary-600 hover:text-primary-700 font-medium"
+            >
               Volver al inicio de sesión
             </Link>
           </p>
@@ -115,12 +122,6 @@ export default function Register() {
               />
             </div>
 
-            {error && (
-              <p className="text-sm text-status-danger-fg bg-status-danger-bg border border-status-danger-border rounded-xl px-3 py-2">
-                {error}
-              </p>
-            )}
-
             <button type="submit" className={btnPrimaryCls} disabled={loading}>
               <span className="flex items-center justify-center gap-2">
                 <UserPlus size={16} />
@@ -132,7 +133,10 @@ export default function Register() {
 
         <p className="text-center text-sm text-on-surface-muted mt-4">
           ¿Ya tienes cuenta?{' '}
-          <Link to="/login" className="text-primary-600 hover:text-primary-700 font-medium">
+          <Link
+            to="/login"
+            className="text-primary-600 hover:text-primary-700 font-medium"
+          >
             Inicia sesión
           </Link>
         </p>

@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { cardCls, btnPrimaryCls, btnDangerCls } from '../../lib/styles';
+import { showSuccess, showError } from '../../lib/toast';
 import PageHeader from '../../components/PageHeader';
+import { PageSkeleton } from '../../components/Skeleton';
 
 interface AdminUser {
   id: string;
@@ -12,9 +14,12 @@ interface AdminUser {
 }
 
 const statusBadge: Record<AdminUser['status'], string> = {
-  pending: 'bg-status-warning-bg text-status-warning-fg border border-status-warning-border',
-  approved: 'bg-status-success-bg text-status-success-fg border border-status-success-border',
-  rejected: 'bg-status-danger-bg text-status-danger-fg border border-status-danger-border',
+  pending:
+    'bg-status-warning-bg text-status-warning-fg border border-status-warning-border',
+  approved:
+    'bg-status-success-bg text-status-success-fg border border-status-success-border',
+  rejected:
+    'bg-status-danger-bg text-status-danger-fg border border-status-danger-border',
 };
 
 const statusLabel: Record<AdminUser['status'], string> = {
@@ -26,13 +31,12 @@ const statusLabel: Record<AdminUser['status'], string> = {
 export default function AdminUsers() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [updating, setUpdating] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<AdminUser[]>('/admin/users')
       .then(setUsers)
-      .catch(() => setError('No se pudieron cargar los usuarios'))
+      .catch(() => showError('No se pudieron cargar los usuarios'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -42,11 +46,16 @@ export default function AdminUsers() {
       await apiFetch(`/admin/users/${id}/${action}`, { method: 'PATCH' });
       setUsers((prev) =>
         prev.map((u) =>
-          u.id === id ? { ...u, status: action === 'approve' ? 'approved' : 'rejected' } : u,
+          u.id === id
+            ? { ...u, status: action === 'approve' ? 'approved' : 'rejected' }
+            : u,
         ),
       );
+      showSuccess(
+        action === 'approve' ? 'Usuario aprobado' : 'Usuario rechazado',
+      );
     } catch {
-      setError('Error al actualizar el estado');
+      showError('Error al actualizar el estado');
     } finally {
       setUpdating(null);
     }
@@ -60,14 +69,8 @@ export default function AdminUsers() {
         icon={ShieldCheck}
       />
 
-      {error && (
-        <p className="text-sm text-status-danger-fg bg-status-danger-bg border border-status-danger-border rounded-xl px-4 py-3 mb-4">
-          {error}
-        </p>
-      )}
-
       {loading ? (
-        <p className="text-on-surface-muted text-sm">Cargando...</p>
+        <PageSkeleton />
       ) : users.length === 0 ? (
         <div className={cardCls}>
           <p className="text-on-surface-muted text-sm text-center py-4">
@@ -79,22 +82,35 @@ export default function AdminUsers() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-surface-alt border-b border-border">
-                <th className="text-left px-4 py-3 font-semibold text-on-surface-medium">Email</th>
-                <th className="text-left px-4 py-3 font-semibold text-on-surface-medium">Estado</th>
-                <th className="text-left px-4 py-3 font-semibold text-on-surface-medium">Registrado</th>
-                <th className="text-right px-4 py-3 font-semibold text-on-surface-medium">Acciones</th>
+                <th className="text-left px-4 py-3 font-semibold text-on-surface-medium">
+                  Email
+                </th>
+                <th className="text-left px-4 py-3 font-semibold text-on-surface-medium">
+                  Estado
+                </th>
+                <th className="text-left px-4 py-3 font-semibold text-on-surface-medium hidden sm:table-cell">
+                  Registrado
+                </th>
+                <th className="text-right px-4 py-3 font-semibold text-on-surface-medium">
+                  Acciones
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border bg-surface">
               {users.map((user) => (
-                <tr key={user.id} className="hover:bg-surface-alt transition-colors duration-100">
+                <tr
+                  key={user.id}
+                  className="hover:bg-surface-alt transition-colors duration-100"
+                >
                   <td className="px-4 py-3 text-on-surface">{user.email}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusBadge[user.status]}`}>
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusBadge[user.status]}`}
+                    >
                       {statusLabel[user.status]}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-on-surface-muted">
+                  <td className="px-4 py-3 text-on-surface-muted hidden sm:table-cell">
                     {new Date(user.createdAt).toLocaleDateString('es', {
                       day: '2-digit',
                       month: 'short',
