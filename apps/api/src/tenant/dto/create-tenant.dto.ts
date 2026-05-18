@@ -6,14 +6,14 @@ export class CreateTenantDto {
   name: string;
 
   @IsEmail()
+  @IsOptional()
+  email?: string;
+
+  @IsString()
   @IsNotEmpty()
-  email: string;
+  phone: string;
 
   @IsString()
-  @IsOptional()
-  phone?: string;
-
-  @IsString()
-  @IsOptional()
-  documentId?: string;
+  @IsNotEmpty()
+  documentId: string;
 }

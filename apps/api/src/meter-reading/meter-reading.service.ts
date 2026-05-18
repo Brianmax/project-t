@@ -53,20 +53,13 @@ export class MeterReadingService {
         `Previous reading: value=${lastReading.reading} date=${lastReading.date}`,
       );
     } else {
-      this.logger.log(`No previous reading found for meter ${departmentMeterId}`);
+      this.logger.log(
+        `No previous reading found for meter ${departmentMeterId}`,
+      );
     }
 
     const readingDate = new Date(createMeterReadingDto.date + 'T12:00:00');
-    const derivedBillingPeriod = (date: Date): { month: number; year: number } => {
-      if (date.getDate() === 1) {
-        const m = date.getMonth(); // 0-indexed, so already the previous month's 1-indexed value
-        return m === 0
-          ? { month: 12, year: date.getFullYear() - 1 }
-          : { month: m, year: date.getFullYear() };
-      }
-      return { month: date.getMonth() + 1, year: date.getFullYear() };
-    };
-    const derived = derivedBillingPeriod(readingDate);
+    const derived = this.deriveBillingPeriod(readingDate);
     const billingMonth = createMeterReadingDto.billingMonth ?? derived.month;
     const billingYear = createMeterReadingDto.billingYear ?? derived.year;
 
@@ -115,11 +108,72 @@ export class MeterReadingService {
     }
 
     this.meterReadingRepository.merge(meterReading, updateMeterReadingDto);
+
+    if (
+      updateMeterReadingDto.date &&
+      updateMeterReadingDto.billingMonth === undefined &&
+      updateMeterReadingDto.billingYear === undefined
+    ) {
+      const readingDate = new Date(updateMeterReadingDto.date + 'T12:00:00');
+      const derived = this.deriveBillingPeriod(readingDate);
+      meterReading.billingMonth = derived.month;
+      meterReading.billingYear = derived.year;
+    }
+
     return this.meterReadingRepository.save(meterReading);
   }
 
   async remove(id: string): Promise<void> {
     const meterReading = await this.findOne(id);
     await this.meterReadingRepository.remove(meterReading);
+  }
+
+  async findLatestDateByDepartment(
+    departmentId: string,
+  ): Promise<{ date: string | null }> {
+    const latest = await this.meterReadingRepository
+      .createQueryBuilder('mr')
+      .innerJoin('mr.departmentMeter', 'dm')
+      .where('dm.departmentId = :departmentId', { departmentId })
+      .orderBy('mr.date', 'DESC')
+      .getOne();
+
+    if (!latest) return { date: null };
+
+    const d = new Date(latest.date);
+    return { date: d.toISOString().slice(0, 10) };
+  }
+
+  async findEarliestBillingPeriodByDepartment(
+    departmentId: string,
+  ): Promise<{ month: number; year: number } | null> {
+    const earliest = await this.meterReadingRepository
+      .createQueryBuilder('mr')
+      .innerJoin('mr.departmentMeter', 'dm')
+      .where('dm.departmentId = :departmentId', { departmentId })
+      .andWhere('mr.billingYear IS NOT NULL')
+      .andWhere('mr.billingMonth IS NOT NULL')
+      .orderBy('mr.billingYear', 'ASC')
+      .addOrderBy('mr.billingMonth', 'ASC')
+      .getOne();
+
+    if (
+      !earliest ||
+      earliest.billingMonth == null ||
+      earliest.billingYear == null
+    ) {
+      return null;
+    }
+    return { month: earliest.billingMonth, year: earliest.billingYear };
+  }
+
+  private deriveBillingPeriod(date: Date): { month: number; year: number } {
+    if (date.getDate() === 1) {
+      const m = date.getMonth();
+      return m === 0
+        ? { month: 12, year: date.getFullYear() - 1 }
+        : { month: m, year: date.getFullYear() };
+    }
+    return { month: date.getMonth() + 1, year: date.getFullYear() };
   }
 }

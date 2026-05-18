@@ -28,20 +28,20 @@ export class CreateDepartmentDto {
   propertyId: string;
 
   @IsNumber()
-  @IsOptional()
-  initialWaterReading?: number;
+  @Min(0)
+  initialWaterReading: number;
 
   @IsDateString()
-  @IsOptional()
-  initialWaterReadingDate?: string;
+  @IsNotEmpty()
+  initialWaterReadingDate: string;
 
   @IsNumber()
-  @IsOptional()
-  initialElectricityReading?: number;
+  @Min(0)
+  initialElectricityReading: number;
 
   @IsDateString()
-  @IsOptional()
-  initialElectricityReadingDate?: string;
+  @IsNotEmpty()
+  initialElectricityReadingDate: string;
 
   @IsInt()
   @Min(1)

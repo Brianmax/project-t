@@ -5,9 +5,10 @@ import { apiFetch, apiPost } from '../lib/api';
 import { inputCls, btnPrimaryCls } from '../lib/styles';
 import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
-import Spinner from '../components/Spinner';
+import { PageSkeleton } from '../components/Skeleton';
 import Modal from '../components/Modal';
 import DatePicker from '../components/DatePicker';
+import { showSuccess, showError } from '../lib/toast';
 
 interface Property {
   id: string;
@@ -26,7 +27,6 @@ export default function Departments() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState('');
   const [floor, setFloor] = useState('');
@@ -38,9 +38,14 @@ export default function Departments() {
   const now = new Date();
   const [waterReading, setWaterReading] = useState('');
   const [electricityReading, setElectricityReading] = useState('');
-  const [initialDate, setInitialDate] = useState(today);
-  const [initialBillingMonth, setInitialBillingMonth] = useState(now.getMonth() + 1);
-  const [initialBillingYear, setInitialBillingYear] = useState(now.getFullYear());
+  const [waterReadingDate, setWaterReadingDate] = useState(today);
+  const [electricityReadingDate, setElectricityReadingDate] = useState(today);
+  const [initialBillingMonth, setInitialBillingMonth] = useState(
+    now.getMonth() + 1,
+  );
+  const [initialBillingYear, setInitialBillingYear] = useState(
+    now.getFullYear(),
+  );
 
   useEffect(() => {
     Promise.all([
@@ -51,7 +56,7 @@ export default function Departments() {
         setDepartments(d);
         setProperties(p);
       })
-      .catch(() => setError('No se pudieron cargar los datos'))
+      .catch(() => showError('No se pudieron cargar los datos'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -66,9 +71,9 @@ export default function Departments() {
         numberOfRooms: Number(rooms),
         propertyId: propertyId,
         initialWaterReading: Number(waterReading),
-        initialWaterReadingDate: initialDate,
+        initialWaterReadingDate: waterReadingDate,
         initialElectricityReading: Number(electricityReading),
-        initialElectricityReadingDate: initialDate,
+        initialElectricityReadingDate: electricityReadingDate,
         initialBillingMonth,
         initialBillingYear,
       });
@@ -79,18 +84,21 @@ export default function Departments() {
       setPropertyId('');
       setWaterReading('');
       setElectricityReading('');
-      setInitialDate(new Date().toISOString().split('T')[0]);
+      const nowStr = new Date().toISOString().split('T')[0];
+      setWaterReadingDate(nowStr);
+      setElectricityReadingDate(nowStr);
       setInitialBillingMonth(new Date().getMonth() + 1);
       setInitialBillingYear(new Date().getFullYear());
       setModalOpen(false);
+      showSuccess('Departamento creado exitosamente');
     } catch {
-      setError('Error al agregar departamento');
+      showError('Error al agregar departamento');
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (loading) return <Spinner />;
+  if (loading) return <PageSkeleton />;
 
   return (
     <div className="animate-fade-in">
@@ -102,12 +110,6 @@ export default function Departments() {
         addLabel="Nuevo Departamento"
       />
 
-      {error && (
-        <div className="mb-4 px-4 py-3 rounded-xl bg-status-danger-bg border border-status-danger-border text-status-danger-text text-sm">
-          {error}
-        </div>
-      )}
-
       {departments.length === 0 ? (
         <EmptyState
           icon={DoorOpen}
@@ -115,7 +117,7 @@ export default function Departments() {
           description="Agrega departamentos a tus propiedades para comenzar."
         />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
           {departments.map((d) => (
             <div
               key={d.id}
@@ -123,11 +125,19 @@ export default function Departments() {
             >
               <div className="flex items-start gap-3 mb-3">
                 <div className="w-10 h-10 rounded-xl bg-violet-50 dark:bg-violet-950/40 flex items-center justify-center flex-shrink-0 ring-1 ring-violet-100 dark:ring-violet-800/40">
-                  <DoorOpen size={19} className="text-violet-600 dark:text-violet-400" />
+                  <DoorOpen
+                    size={19}
+                    className="text-violet-600 dark:text-violet-400"
+                  />
                 </div>
                 <div className="min-w-0">
                   <h3 className="font-semibold text-on-surface truncate">
-                    <Link to={`/departments/${d.id}`} className="hover:text-primary-600 transition-colors">{d.name}</Link>
+                    <Link
+                      to={`/departments/${d.id}`}
+                      className="hover:text-primary-600 transition-colors"
+                    >
+                      {d.name}
+                    </Link>
                   </h3>
                   <div className="flex items-center gap-1.5 text-[13px] text-on-surface-muted">
                     <Building2 size={13} />
@@ -150,10 +160,16 @@ export default function Departments() {
         </div>
       )}
 
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Nuevo Departamento">
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="Nuevo Departamento"
+      >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Nombre</label>
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+              Nombre
+            </label>
             <input
               type="text"
               value={name}
@@ -165,7 +181,9 @@ export default function Departments() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Piso</label>
+              <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+                Piso
+              </label>
               <input
                 type="number"
                 value={floor}
@@ -176,7 +194,9 @@ export default function Departments() {
               />
             </div>
             <div>
-              <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Habitaciones</label>
+              <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+                Habitaciones
+              </label>
               <input
                 type="number"
                 value={rooms}
@@ -188,7 +208,9 @@ export default function Departments() {
             </div>
           </div>
           <div>
-            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Propiedad</label>
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+              Propiedad
+            </label>
             <select
               value={propertyId}
               onChange={(e) => setPropertyId(e.target.value)}
@@ -197,64 +219,118 @@ export default function Departments() {
             >
               <option value="">Seleccionar propiedad...</option>
               {properties.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
               ))}
             </select>
           </div>
           <div className="pt-2">
-            <p className="text-[13px] font-semibold text-on-surface-medium mb-3">Lecturas Iniciales</p>
+            <p className="text-[13px] font-semibold text-on-surface-medium mb-3">
+              Lecturas Iniciales
+            </p>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Lectura Inicial Agua</label>
+                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+                    Lectura Inicial Agua
+                  </label>
                   <input
                     type="number"
                     step="0.01"
+                    min="0"
                     value={waterReading}
                     onChange={(e) => setWaterReading(e.target.value)}
                     placeholder="0"
                     required
                     className={inputCls}
                   />
+                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5 mt-2">
+                    Fecha Lectura Agua
+                  </label>
+                  <DatePicker
+                    value={waterReadingDate}
+                    onChange={setWaterReadingDate}
+                    required
+                  />
                 </div>
                 <div>
-                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Lectura Inicial Luz</label>
+                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+                    Lectura Inicial Luz
+                  </label>
                   <input
                     type="number"
                     step="0.01"
+                    min="0"
                     value={electricityReading}
                     onChange={(e) => setElectricityReading(e.target.value)}
                     placeholder="0"
                     required
                     className={inputCls}
                   />
+                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5 mt-2">
+                    Fecha Lectura Luz
+                  </label>
+                  <DatePicker
+                    value={electricityReadingDate}
+                    onChange={setElectricityReadingDate}
+                    required
+                  />
                 </div>
-              </div>
-              <div>
-                <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Fecha de Lectura</label>
-                <DatePicker value={initialDate} onChange={setInitialDate} required />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Mes de Facturación</label>
-                  <select value={initialBillingMonth} onChange={(e) => setInitialBillingMonth(Number(e.target.value))} required className={inputCls}>
-                    {['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'].map((n, i) => (
-                      <option key={i + 1} value={i + 1}>{n}</option>
+                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+                    Mes de Facturación
+                  </label>
+                  <select
+                    value={initialBillingMonth}
+                    onChange={(e) =>
+                      setInitialBillingMonth(Number(e.target.value))
+                    }
+                    required
+                    className={inputCls}
+                  >
+                    {[
+                      'Enero',
+                      'Febrero',
+                      'Marzo',
+                      'Abril',
+                      'Mayo',
+                      'Junio',
+                      'Julio',
+                      'Agosto',
+                      'Septiembre',
+                      'Octubre',
+                      'Noviembre',
+                      'Diciembre',
+                    ].map((n, i) => (
+                      <option key={i + 1} value={i + 1}>
+                        {n}
+                      </option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Año de Facturación</label>
-                  <input type="number" value={initialBillingYear} onChange={(e) => setInitialBillingYear(Number(e.target.value))} required className={inputCls} min={2000} max={2100} />
+                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+                    Año de Facturación
+                  </label>
+                  <input
+                    type="number"
+                    value={initialBillingYear}
+                    onChange={(e) =>
+                      setInitialBillingYear(Number(e.target.value))
+                    }
+                    required
+                    className={inputCls}
+                    min={2000}
+                    max={2100}
+                  />
                 </div>
               </div>
             </div>
           </div>
-          <button
-            type="submit"
-            disabled={submitting}
-            className={btnPrimaryCls}
-          >
+          <button type="submit" disabled={submitting} className={btnPrimaryCls}>
             {submitting ? 'Guardando...' : 'Guardar Departamento'}
           </button>
         </form>

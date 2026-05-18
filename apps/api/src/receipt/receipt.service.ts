@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, Repository } from 'typeorm';
 import { Contract } from '../contract/entities/contract.entity';
@@ -49,6 +53,9 @@ export class ReceiptService {
     contractId: string,
     month: number,
     year: number,
+    startDay?: number,
+    endDay?: number,
+    prorateRent?: boolean,
   ): Promise<Receipt> {
     const existing = await this.receiptRepository.findOne({
       where: { contractId, month, year },
@@ -57,7 +64,14 @@ export class ReceiptService {
       return this.toReceipt(existing);
     }
 
-    const calculated = await this.calculateReceipt(contractId, month, year);
+    const calculated = await this.calculateReceipt(
+      contractId,
+      month,
+      year,
+      startDay,
+      endDay,
+      prorateRent,
+    );
     return { ...calculated, status: ReceiptStatus.PENDING_REVIEW };
   }
 
@@ -68,15 +82,28 @@ export class ReceiptService {
     startDay?: number,
     endDay?: number,
     prorateRent?: boolean,
+    force?: boolean,
   ): Promise<Receipt> {
     // Always recalculate to get the latest extra charges and consumption
-    const calculated = await this.calculateReceipt(contractId, month, year, startDay, endDay, prorateRent);
+    const calculated = await this.calculateReceipt(
+      contractId,
+      month,
+      year,
+      startDay,
+      endDay,
+      prorateRent,
+    );
 
     const existing = await this.receiptRepository.findOne({
       where: { contractId, month, year },
     });
 
     if (existing) {
+      if (existing.status === ReceiptStatus.APPROVED && !force) {
+        throw new BadRequestException(
+          `Receipt for ${month}/${year} is already approved. Use force=true to regenerate.`,
+        );
+      }
       // Update existing receipt with new calculation and reset to draft
       existing.status = ReceiptStatus.PENDING_REVIEW;
       existing.startDay = startDay ?? null;
@@ -123,6 +150,21 @@ export class ReceiptService {
     receipt.status = status;
     const saved = await this.receiptRepository.save(receipt);
     return this.toReceipt(saved);
+  }
+
+  async findReceiptMonthsByContract(
+    contractId: string,
+  ): Promise<Array<{ month: number; year: number; status: string }>> {
+    const rows = await this.receiptRepository.find({
+      where: { contractId },
+      select: ['month', 'year', 'status'],
+      order: { year: 'ASC', month: 'ASC' },
+    });
+    return rows.map((r) => ({
+      month: r.month,
+      year: r.year,
+      status: r.status,
+    }));
   }
 
   async findPendingReceipts(): Promise<Receipt[]> {
@@ -196,6 +238,8 @@ export class ReceiptService {
         MeterType.LIGHT,
         month,
         year,
+        startDay,
+        endDay,
       );
     const waterConsumptionData =
       await this.consumptionService.calculateConsumptionForPeriod(
@@ -203,6 +247,8 @@ export class ReceiptService {
         MeterType.WATER,
         month,
         year,
+        startDay,
+        endDay,
       );
 
     const lightConsumption = {

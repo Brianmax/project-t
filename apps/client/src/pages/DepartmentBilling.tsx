@@ -13,12 +13,11 @@ import {
   Ban,
 } from 'lucide-react';
 import { apiFetch, apiPost } from '../lib/api';
-import Spinner from '../components/Spinner';
+import { PageSkeleton } from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
+import { showSuccess, showError } from '../lib/toast';
 import { inputCls, btnCls } from '../lib/styles';
-
-// ── Types ──────────────────────────────────────────────
 
 interface Property {
   id: string;
@@ -67,6 +66,10 @@ interface ExtraCharge {
   month: number;
   year: number;
   contractId: string;
+  type: 'manual' | 'late_fee';
+  sourceReceiptId: string | null;
+  ratePerDay: number | null;
+  daysOverdue: number | null;
 }
 
 interface ReceiptItem {
@@ -107,8 +110,6 @@ interface TerminationResult {
   createdAt: string;
 }
 
-// ── Component ──────────────────────────────────────────
-
 export default function DepartmentBilling() {
   const { id } = useParams<{ id: string }>();
   const departmentId = id!;
@@ -122,28 +123,35 @@ export default function DepartmentBilling() {
   const [consumption, setConsumption] = useState<ConsumptionData | null>(null);
   const [extraCharges, setExtraCharges] = useState<ExtraCharge[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const [showDeparture, setShowDeparture] = useState(false);
   const [departureDay, setDepartureDay] = useState('');
-  const [prorateRent, setProrateRent] = useState(false);
+  const [lastReadingDate, setLastReadingDate] = useState<string | null>(null);
+  const [receiptMonths, setReceiptMonths] = useState<
+    Array<{ month: number; year: number }>
+  >([]);
+  const [baselineMonth, setBaselineMonth] = useState<{
+    month: number;
+    year: number;
+  } | null>(null);
 
-  // Termination form state
-  const [actualDepartureDate, setActualDepartureDate] = useState('');
   const [apartmentCondition, setApartmentCondition] = useState('');
-  const [guaranteeDeduction, setGuaranteeDeduction] = useState('0');
-  const [termination, setTermination] = useState<TerminationResult | null>(null);
+  const [termination, setTermination] = useState<TerminationResult | null>(
+    null,
+  );
   const [terminationLoading, setTerminationLoading] = useState(false);
 
-  // Add extra charge form
   const [chargeDesc, setChargeDesc] = useState('');
   const [chargeAmount, setChargeAmount] = useState('');
+  const [lateFeeRate, setLateFeeRate] = useState('5.00');
+  const [lateFeeLoading, setLateFeeLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Receipt modal
   const [receiptModal, setReceiptModal] = useState(false);
   const [receipt, setReceipt] = useState<GeneratedReceipt | null>(null);
-  const [previewReceipt, setPreviewReceipt] = useState<GeneratedReceipt | null>(null);
+  const [previewReceipt, setPreviewReceipt] = useState<GeneratedReceipt | null>(
+    null,
+  );
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [approvingReceipt, setApprovingReceipt] = useState(false);
   const receiptStatusLabel: Record<GeneratedReceipt['status'], string> = {
@@ -152,48 +160,94 @@ export default function DepartmentBilling() {
     denied: 'Denegado',
   };
   const receiptStatusClass: Record<GeneratedReceipt['status'], string> = {
-    pending_review: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200/50 dark:ring-amber-700/40',
-    approved: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200/50 dark:ring-emerald-700/40',
-    denied: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 ring-1 ring-red-200/50 dark:ring-red-700/40',
+    pending_review:
+      'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200/50 dark:ring-amber-700/40',
+    approved:
+      'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200/50 dark:ring-emerald-700/40',
+    denied:
+      'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 ring-1 ring-red-200/50 dark:ring-red-700/40',
   };
-
-  // ── Fetch data ────────────────────────────────────────
 
   const fetchData = useCallback(async () => {
     setReceipt(null);
     setPreviewReceipt(null);
 
     try {
-      const [dept, contracts, cons] = await Promise.all([
-        apiFetch<Department>(`/departments/${departmentId}`),
-        apiFetch<Contract[]>(`/contracts?departmentId=${departmentId}`),
-        apiFetch<ConsumptionData>(`/departments/${departmentId}/consumption`),
-      ]);
+      const [dept, contracts, cons, latestReading, earliestBilling] =
+        await Promise.all([
+          apiFetch<Department>(`/departments/${departmentId}`),
+          apiFetch<Contract[]>(`/contracts?departmentId=${departmentId}`),
+          apiFetch<{
+            light: { consumption: number; cost: number };
+            water: { consumption: number; cost: number };
+          }>(
+            `/departments/${departmentId}/consumption/period?month=${month}&year=${year}`,
+          ).catch(() => null),
+          apiFetch<{ date: string | null }>(
+            `/departments/${departmentId}/meter-readings/latest`,
+          ).catch(() => ({ date: null })),
+          apiFetch<{ month: number; year: number } | null>(
+            `/departments/${departmentId}/meter-readings/earliest-billing-period`,
+          ).catch(() => null),
+        ]);
 
       setDepartment(dept);
-      setConsumption(cons);
+      setLastReadingDate(latestReading?.date ?? null);
+      setBaselineMonth(earliestBilling ?? null);
+      setConsumption(
+        cons
+          ? {
+              light: {
+                consumption: cons.light.consumption,
+                cost: cons.light.cost,
+                lastReading: null,
+                prevReading: cons.light.consumption > 0 ? 0 : null,
+              },
+              water: {
+                consumption: cons.water.consumption,
+                cost: cons.water.cost,
+                lastReading: null,
+                prevReading: cons.water.consumption > 0 ? 0 : null,
+              },
+            }
+          : null,
+      );
 
       const activeContract = contracts[0] ?? null;
       setContract(activeContract);
 
       if (activeContract) {
-        const [charges, existingTermination] = await Promise.all([
+        const [charges, existingTermination, months] = await Promise.all([
           apiFetch<ExtraCharge[]>(
             `/extra-charges?contractId=${activeContract.id}&month=${month}&year=${year}`,
           ),
-          apiFetch<TerminationResult | null>(`/contracts/${activeContract.id}/termination`).catch(() => null),
+          apiFetch<TerminationResult | null>(
+            `/contracts/${activeContract.id}/termination`,
+          ).catch(() => null),
+          apiFetch<Array<{ month: number; year: number; status: string }>>(
+            `/contracts/${activeContract.id}/receipts/months`,
+          ).catch(() => []),
         ]);
         setExtraCharges(charges);
+        setReceiptMonths(months.map(({ month: m, year: y }) => ({ month: m, year: y })));
 
         if (existingTermination) {
           setTermination(existingTermination);
           setShowDeparture(true);
         }
 
-        // Load preview/saved receipt for the selected period
         try {
+          const previewParams = new URLSearchParams({
+            month: String(month),
+            year: String(year),
+          });
+          if (departureDay) {
+            previewParams.set('startDay', '1');
+            previewParams.set('endDay', departureDay);
+            previewParams.set('prorateRent', 'true');
+          }
           const fetchedReceipt = await apiFetch<GeneratedReceipt>(
-            `/contracts/${activeContract.id}/receipts?month=${month}&year=${year}`,
+            `/contracts/${activeContract.id}/receipts?${previewParams}`,
           );
           setPreviewReceipt(fetchedReceipt);
           if (fetchedReceipt.id) {
@@ -206,43 +260,48 @@ export default function DepartmentBilling() {
         setExtraCharges([]);
       }
     } catch {
-      setError('No se pudieron cargar los datos de facturacion');
+      showError('No se pudieron cargar los datos de facturacion');
     } finally {
       setLoading(false);
     }
-  }, [departmentId, month, year]);
+  }, [departmentId, month, year, departureDay]);
 
   useEffect(() => {
     setLoading(true);
     fetchData();
   }, [fetchData]);
 
-  // Clear receipt state when month or year changes (but preserve termination)
   useEffect(() => {
     setReceipt(null);
     setPreviewReceipt(null);
     if (!termination) {
       setShowDeparture(false);
       setDepartureDay('');
-      setProrateRent(false);
     }
   }, [month, year, termination]);
-
-  // ── Refresh extra charges only ────────────────────────
 
   const refreshCharges = useCallback(async () => {
     if (!contract) return;
     try {
-      const charges = await apiFetch<ExtraCharge[]>(
-        `/extra-charges?contractId=${contract.id}&month=${month}&year=${year}`,
-      );
+      const [charges, updatedPreview] = await Promise.all([
+        apiFetch<ExtraCharge[]>(
+          `/extra-charges?contractId=${contract.id}&month=${month}&year=${year}`,
+        ),
+        apiFetch<GeneratedReceipt>(
+          `/contracts/${contract.id}/receipts?month=${month}&year=${year}`,
+        ).catch(() => null),
+      ]);
       setExtraCharges(charges);
+      if (updatedPreview) {
+        setPreviewReceipt(updatedPreview);
+        if (updatedPreview.id) {
+          setReceipt(updatedPreview);
+        }
+      }
     } catch {
-      setError('Error al cargar cargos extra');
+      showError('Error al cargar cargos extra');
     }
   }, [contract, month, year]);
-
-  // ── Handlers ──────────────────────────────────────────
 
   const handleAddCharge = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -259,8 +318,9 @@ export default function DepartmentBilling() {
       setChargeDesc('');
       setChargeAmount('');
       await refreshCharges();
+      showSuccess('Cargo extra agregado exitosamente');
     } catch {
-      setError('Error al agregar cargo extra');
+      showError('Error al agregar cargo extra');
     } finally {
       setSubmitting(false);
     }
@@ -270,8 +330,33 @@ export default function DepartmentBilling() {
     try {
       await apiFetch(`/extra-charges/${chargeId}`, { method: 'DELETE' });
       await refreshCharges();
-    } catch {
-      setError('Error al eliminar cargo extra');
+      showSuccess('Cargo extra eliminado exitosamente');
+    } catch (err) {
+      const details = err instanceof Error ? ` (${err.message})` : '';
+      showError(`Error al eliminar cargo extra${details}`);
+    }
+  };
+
+  const handleGenerateLateFee = async (
+    targetMonth: number,
+    targetYear: number,
+  ) => {
+    if (!contract) return;
+    setLateFeeLoading(true);
+    try {
+      await apiPost('/extra-charges/late-fee', {
+        contractId: contract.id,
+        month: targetMonth,
+        year: targetYear,
+        ratePerDay: Number(lateFeeRate),
+      });
+      await refreshCharges();
+      showSuccess('Mora generada exitosamente');
+    } catch (err) {
+      const details = err instanceof Error ? ` (${err.message})` : '';
+      showError(`Error al generar mora${details}`);
+    } finally {
+      setLateFeeLoading(false);
     }
   };
 
@@ -279,11 +364,17 @@ export default function DepartmentBilling() {
     if (!contract) return;
     setReceiptLoading(true);
     try {
-      const params = new URLSearchParams({ month: String(month), year: String(year) });
+      const params = new URLSearchParams({
+        month: String(month),
+        year: String(year),
+      });
       if (departureDay) {
         params.set('startDay', '1');
         params.set('endDay', departureDay);
-        params.set('prorateRent', String(prorateRent));
+        params.set('prorateRent', 'true');
+      }
+      if (receipt?.status === 'pending_review') {
+        params.set('force', 'true');
       }
       const data = await apiFetch<GeneratedReceipt>(
         `/contracts/${contract.id}/receipts?${params}`,
@@ -292,13 +383,19 @@ export default function DepartmentBilling() {
       setReceipt(data);
       setPreviewReceipt(data);
       setReceiptModal(true);
+      showSuccess('Recibo generado exitosamente');
+      setReceiptMonths((prev) =>
+        prev.some((p) => p.month === data.month && p.year === data.year)
+          ? prev
+          : [...prev, { month: data.month, year: data.year }],
+      );
     } catch (error) {
       const details = error instanceof Error ? ` (${error.message})` : '';
-      setError(`Error al generar recibo${details}`);
+      showError(`Error al generar recibo${details}`);
     } finally {
       setReceiptLoading(false);
     }
-  }, [contract, month, year, departureDay, prorateRent]);
+  }, [contract, month, year, departureDay, receipt]);
 
   const handleApproveReceipt = async () => {
     if (!contract || !receipt) return;
@@ -312,9 +409,10 @@ export default function DepartmentBilling() {
         },
       );
       setReceipt(updated);
+      showSuccess('Recibo aprobado exitosamente');
     } catch (error) {
       const details = error instanceof Error ? ` (${error.message})` : '';
-      setError(`Error al aprobar recibo${details}`);
+      showError(`Error al aprobar recibo${details}`);
     } finally {
       setApprovingReceipt(false);
     }
@@ -332,21 +430,21 @@ export default function DepartmentBilling() {
         },
       );
       setReceipt(updated);
+      showSuccess('Recibo denegado');
     } catch (error) {
       const details = error instanceof Error ? ` (${error.message})` : '';
-      setError(`Error al denegar recibo${details}`);
+      showError(`Error al denegar recibo${details}`);
     } finally {
       setApprovingReceipt(false);
     }
   };
 
   const handleSendWhatsApp = () => {
-    // TODO: Implement WhatsApp sending via Twilio + BullMQ
     alert('WhatsApp sending will be implemented in next phase');
   };
 
   const handleTerminate = async () => {
-    if (!contract || !actualDepartureDate) return;
+    if (!contract || !departureDay) return;
     setTerminationLoading(true);
     try {
       const result = await apiFetch<TerminationResult>(
@@ -356,17 +454,18 @@ export default function DepartmentBilling() {
           body: JSON.stringify({
             actualDepartureDate,
             apartmentCondition: apartmentCondition || undefined,
-            guaranteeDeduction: Number(guaranteeDeduction) || 0,
+            guaranteeDeduction: 0,
             servicesCost: lightCost + waterCost + extraTotal,
-            ...(prorateRent && departureDay ? { proratedRentAmount: rentAmount } : {}),
+            proratedRentAmount: rentAmount,
           }),
         },
       );
       setTermination(result);
-      setContract((prev) => prev ? { ...prev, status: 'terminated' } : prev);
+      setContract((prev) => (prev ? { ...prev, status: 'terminated' } : prev));
+      showSuccess('Contrato cerrado exitosamente');
     } catch (err) {
       const details = err instanceof Error ? ` (${err.message})` : '';
-      setError(`Error al cerrar contrato${details}`);
+      showError(`Error al cerrar contrato${details}`);
     } finally {
       setTerminationLoading(false);
     }
@@ -375,20 +474,16 @@ export default function DepartmentBilling() {
   const handleCancelDeparture = () => {
     setShowDeparture(false);
     setDepartureDay('');
-    setProrateRent(false);
-    setActualDepartureDate('');
     setApartmentCondition('');
-    setGuaranteeDeduction('0');
   };
 
-  // ── Computed ──────────────────────────────────────────
-
-  const isTerminated = contract?.status === 'terminated' || termination !== null;
+  const isTerminated =
+    contract?.status === 'terminated' || termination !== null;
 
   const fullRent = contract ? Number(contract.rentAmount) : 0;
   const rentAmount = (() => {
     if (!contract) return 0;
-    if (showDeparture && departureDay && prorateRent) {
+    if (showDeparture && departureDay) {
       const daysInMonth = new Date(year, month, 0).getDate();
       const daysOccupied = Number(departureDay);
       return (daysOccupied / daysInMonth) * fullRent;
@@ -396,8 +491,6 @@ export default function DepartmentBilling() {
     return fullRent;
   })();
 
-  // Use period-specific data from the receipt preview/saved receipt when available.
-  // Fall back to current consumption only when no preview has loaded yet.
   const displaySource = receipt ?? previewReceipt;
 
   let lightCost = 0;
@@ -405,33 +498,32 @@ export default function DepartmentBilling() {
   let lightHasReadings = false;
   let waterHasReadings = false;
 
-  if (displaySource) {
-    const lightItem = displaySource.items.find((item) =>
-      item.description.toLowerCase().includes('electricity') ||
-      item.description.toLowerCase().includes('luz'),
+  if (consumption) {
+    lightCost = consumption.light.cost;
+    waterCost = consumption.water.cost;
+    lightHasReadings = consumption.light.consumption > 0;
+    waterHasReadings = consumption.water.consumption > 0;
+  } else if (displaySource) {
+    const lightItem = displaySource.items.find(
+      (item) =>
+        item.description.toLowerCase().includes('electricity') ||
+        item.description.toLowerCase().includes('luz'),
     );
-    const waterItem = displaySource.items.find((item) =>
-      item.description.toLowerCase().includes('water') ||
-      item.description.toLowerCase().includes('agua'),
+    const waterItem = displaySource.items.find(
+      (item) =>
+        item.description.toLowerCase().includes('water') ||
+        item.description.toLowerCase().includes('agua'),
     );
     lightCost = lightItem ? lightItem.amount : 0;
     waterCost = waterItem ? waterItem.amount : 0;
     lightHasReadings = lightCost > 0;
     waterHasReadings = waterCost > 0;
-  } else {
-    lightHasReadings = consumption !== null && consumption.light.prevReading !== null;
-    waterHasReadings = consumption !== null && consumption.water.prevReading !== null;
-    lightCost = lightHasReadings ? consumption!.light.cost : 0;
-    waterCost = waterHasReadings ? consumption!.water.cost : 0;
   }
 
-  // Units to display next to each service label
-  const lightUnits = displaySource
-    ? null  // units embedded in receipt description; don't duplicate
-    : (lightHasReadings ? consumption!.light.consumption : null);
-  const waterUnits = displaySource
-    ? null
-    : (waterHasReadings ? consumption!.water.consumption : null);
+  const lightUnits =
+    lightHasReadings && consumption ? consumption.light.consumption : null;
+  const waterUnits =
+    waterHasReadings && consumption ? consumption.water.consumption : null;
 
   const extraTotal = extraCharges.reduce(
     (sum, ec) => sum + Number(ec.amount),
@@ -439,20 +531,83 @@ export default function DepartmentBilling() {
   );
   const total = rentAmount + lightCost + waterCost + extraTotal;
 
-  // Settlement preview (computed from form inputs, not yet saved)
-  const guaranteeDepositAmt = contract ? Number(contract.guaranteeDeposit) : 0;
-  const guaranteeDeductionAmt = Number(guaranteeDeduction) || 0;
-  const servicesCostPreview = lightCost + waterCost + extraTotal;
-  const rentRefundRawPreview =
-    prorateRent && departureDay ? Math.max(0, fullRent - rentAmount) : 0;
-  const servicesFromGuaranteePreview = Math.max(0, servicesCostPreview - rentRefundRawPreview);
-  const rentRefundPreview = Math.max(0, rentRefundRawPreview - servicesCostPreview);
-  const guaranteeReturnPreview = Math.max(
-    0,
-    guaranteeDepositAmt - guaranteeDeductionAmt - servicesFromGuaranteePreview,
+  const existingLateFeeMonths = new Set(
+    extraCharges
+      .filter((ec) => ec.type === 'late_fee')
+      .map((ec) => `${ec.month}-${ec.year}`),
   );
 
-  // ── Style helpers ─────────────────────────────────────
+  const overdueReceipts: { month: number; year: number; balance: number }[] =
+    (() => {
+      if (!receipt || receipt.balance >= 0) return [];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const graceEnd = new Date(receipt.year, receipt.month, 15);
+      if (today <= graceEnd) return [];
+      if (existingLateFeeMonths.has(`${receipt.month}-${receipt.year}`))
+        return [];
+      return [
+        { month: receipt.month, year: receipt.year, balance: receipt.balance },
+      ];
+    })();
+
+  const guaranteeDepositAmt = contract ? Number(contract.guaranteeDeposit) : 0;
+  const advanceAmt = contract ? Number(contract.advancePayment) : 0;
+  const creditsTotal = advanceAmt + guaranteeDepositAmt;
+
+  const actualDepartureDate = departureDay
+    ? `${year}-${String(month).padStart(2, '0')}-${String(Number(departureDay)).padStart(2, '0')}`
+    : contract
+      ? contract.endDate.slice(0, 10)
+      : '';
+
+  const monthAbbr = [
+    'Ene',
+    'Feb',
+    'Mar',
+    'Abr',
+    'May',
+    'Jun',
+    'Jul',
+    'Ago',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dic',
+  ];
+
+  const missingReceiptMonths: Array<{ month: number; year: number }> = (() => {
+    if (!contract) return [];
+    const start = new Date(contract.startDate);
+    let m = start.getMonth() + 1;
+    let y = start.getFullYear();
+    const seq: Array<{ month: number; year: number }> = [];
+    while (y < year || (y === year && m <= month)) {
+      seq.push({ month: m, year: y });
+      m += 1;
+      if (m > 12) {
+        m = 1;
+        y += 1;
+      }
+    }
+    const have = new Set(receiptMonths.map((r) => `${r.year}-${r.month}`));
+    const baselineKey = baselineMonth
+      ? `${baselineMonth.year}-${baselineMonth.month}`
+      : null;
+    return seq.filter(
+      (p) =>
+        !have.has(`${p.year}-${p.month}`) &&
+        `${p.year}-${p.month}` !== baselineKey,
+    );
+  })();
+
+  const manualExtrasTotal = extraCharges
+    .filter((ec) => ec.type !== 'late_fee')
+    .reduce((s, ec) => s + Number(ec.amount), 0);
+  const lateFeeTotal = extraCharges
+    .filter((ec) => ec.type === 'late_fee')
+    .reduce((s, ec) => s + Number(ec.amount), 0);
+  const balanceSummary = creditsTotal - total;
 
   const months = [
     'Enero',
@@ -469,9 +624,7 @@ export default function DepartmentBilling() {
     'Diciembre',
   ];
 
-  // ── Render ────────────────────────────────────────────
-
-  if (loading) return <Spinner />;
+  if (loading) return <PageSkeleton />;
 
   if (!department) {
     return (
@@ -495,7 +648,6 @@ export default function DepartmentBilling() {
 
   return (
     <div className="animate-fade-in max-w-3xl mx-auto">
-      {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         <Link
           to={`/departments/${departmentId}`}
@@ -515,25 +667,16 @@ export default function DepartmentBilling() {
         </div>
       </div>
 
-      {/* Terminated banner */}
       {isTerminated && (
         <div className="mb-6 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200/60 dark:border-red-700/40 text-red-700 dark:text-red-300 text-sm flex items-center gap-2">
           <Ban size={16} />
           <span className="font-semibold">Contrato terminado.</span>
-          <span className="text-red-600 dark:text-red-400">No se pueden generar nuevos recibos.</span>
+          <span className="text-red-600 dark:text-red-400">
+            No se pueden generar nuevos recibos.
+          </span>
         </div>
       )}
 
-      {error && (
-        <div className="mb-4 px-4 py-3 rounded-xl bg-status-danger-bg border border-status-danger-border text-status-danger-text text-sm">
-          {error}
-          <button onClick={() => setError(null)} className="ml-2 underline">
-            Cerrar
-          </button>
-        </div>
-      )}
-
-      {/* Period Selector */}
       <div className="flex items-center gap-3 mb-6">
         <select
           value={month}
@@ -554,10 +697,20 @@ export default function DepartmentBilling() {
         />
       </div>
 
-      {/* Departure panel trigger */}
       {contract && !showDeparture && !isTerminated && (
         <button
-          onClick={() => { setShowDeparture(true); if (contract.endDate) setActualDepartureDate(contract.endDate.slice(0, 10)); }}
+          onClick={() => {
+            setShowDeparture(true);
+            if (lastReadingDate) {
+              const d = new Date(lastReadingDate + 'T12:00:00');
+              if (
+                d.getFullYear() === year &&
+                d.getMonth() + 1 === month
+              ) {
+                setDepartureDay(String(d.getDate()));
+              }
+            }
+          }}
           className="flex items-center gap-2 text-[13px] font-medium text-on-surface-medium hover:text-on-surface transition-colors mb-6"
         >
           <DoorOpen size={15} />
@@ -565,10 +718,8 @@ export default function DepartmentBilling() {
         </button>
       )}
 
-      {/* Departure panel */}
       {contract && showDeparture && (
         <div className="bg-surface rounded-2xl border border-border p-5 shadow-sm mb-6 space-y-4">
-          {/* Billing day / prorate row — only when contract is still active */}
           {!termination && (
             <div className="flex flex-wrap items-center gap-3">
               <label className="text-[13px] font-medium text-on-surface-medium whitespace-nowrap">
@@ -579,38 +730,29 @@ export default function DepartmentBilling() {
                 min={1}
                 max={31}
                 value={departureDay}
-                onChange={(e) => { setDepartureDay(e.target.value); if (!e.target.value) setProrateRent(false); }}
+                onChange={(e) => setDepartureDay(e.target.value)}
                 placeholder="ej. 15"
                 className={inputCls + ' max-w-[100px]'}
               />
-              {departureDay && (
-                <label className="flex items-center gap-2 text-[13px] text-on-surface-medium cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={prorateRent}
-                    onChange={(e) => setProrateRent(e.target.checked)}
-                    className="w-4 h-4 rounded accent-blue-600"
-                  />
-                  Prorratear alquiler
-                </label>
-              )}
+              <span className="text-[12px] text-on-surface-muted">
+                Alquiler se cobra solo por días ocupados.
+              </span>
               <button
                 onClick={handleCancelDeparture}
-                className="text-[13px] text-on-surface-faint hover:text-on-surface-medium transition-colors"
+                className="text-[13px] text-on-surface-faint hover:text-on-surface-medium transition-colors ml-auto"
               >
                 Cancelar
               </button>
             </div>
           )}
 
-          {/* Termination section */}
-          <div className="border-t border-border pt-4">
+          <div className="border-t border-border pt-4 grid grid-cols-1 lg:grid-cols-5 gap-4">
+            <div className="lg:col-span-3 space-y-3">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-muted mb-3">
               Cierre de contrato
             </p>
 
             {termination ? (
-              /* ── Read-only summary ── */
               <div className="space-y-2">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 ring-1 ring-red-200/50 dark:ring-red-700/40">
@@ -618,44 +760,71 @@ export default function DepartmentBilling() {
                     Contrato cerrado
                   </span>
                 </div>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-[13px]">
-                  <span className="text-on-surface-medium">Fecha esperada de salida</span>
-                  <span className="text-on-surface font-medium">
-                    {new Date(termination.expectedDepartureDate).toLocaleDateString('es-PE')}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-[13px]">
+                  <span className="text-on-surface-medium">
+                    Fecha esperada de salida
                   </span>
-                  <span className="text-on-surface-medium">Fecha real de salida</span>
                   <span className="text-on-surface font-medium">
-                    {new Date(termination.actualDepartureDate).toLocaleDateString('es-PE')}
+                    {new Date(
+                      termination.expectedDepartureDate,
+                    ).toLocaleDateString('es-PE')}
+                  </span>
+                  <span className="text-on-surface-medium">
+                    Fecha real de salida
+                  </span>
+                  <span className="text-on-surface font-medium">
+                    {new Date(
+                      termination.actualDepartureDate,
+                    ).toLocaleDateString('es-PE')}
                   </span>
                   {termination.apartmentCondition && (
                     <>
-                      <span className="text-on-surface-medium">Condicion del apartamento</span>
-                      <span className="text-on-surface font-medium">{termination.apartmentCondition}</span>
+                      <span className="text-on-surface-medium">
+                        Condicion del apartamento
+                      </span>
+                      <span className="text-on-surface font-medium">
+                        {termination.apartmentCondition}
+                      </span>
                     </>
                   )}
-                  <span className="text-on-surface-medium">Adelanto aplicado</span>
-                  <span className="text-on-surface font-medium">
-                    S/ {Number(termination.advanceApplied).toFixed(2)} → cubre ultimo mes
+                  <span className="text-on-surface-medium">
+                    Adelanto aplicado
                   </span>
-                  <span className="text-on-surface-medium">Deposito de garantia</span>
-                  <span className="text-on-surface font-medium">S/ {Number(termination.guaranteeDeposit).toFixed(2)}</span>
+                  <span className="text-on-surface font-medium">
+                    S/ {Number(termination.advanceApplied).toFixed(2)} → cubre
+                    ultimo mes
+                  </span>
+                  <span className="text-on-surface-medium">
+                    Deposito de garantia
+                  </span>
+                  <span className="text-on-surface font-medium">
+                    S/ {Number(termination.guaranteeDeposit).toFixed(2)}
+                  </span>
                   <span className="text-on-surface-medium">Deduccion</span>
-                  <span className="text-on-surface font-medium">S/ {Number(termination.guaranteeDeduction).toFixed(2)}</span>
+                  <span className="text-on-surface font-medium">
+                    S/ {Number(termination.guaranteeDeduction).toFixed(2)}
+                  </span>
                   {Number(termination.servicesCost) > 0 && (
                     <>
-                      <span className="text-on-surface-medium">Servicios del mes</span>
+                      <span className="text-on-surface-medium">
+                        Servicios del mes
+                      </span>
                       <span className="font-medium text-red-600 dark:text-red-400">
                         − S/ {Number(termination.servicesCost).toFixed(2)}
                       </span>
                     </>
                   )}
-                  <span className="text-on-surface-medium font-semibold">A devolver (garantia)</span>
+                  <span className="text-on-surface-medium font-semibold">
+                    A devolver (garantia)
+                  </span>
                   <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
                     S/ {Number(termination.guaranteeReturn).toFixed(2)}
                   </span>
                   {Number(termination.rentRefund) > 0 && (
                     <>
-                      <span className="text-on-surface-medium font-semibold">Devolucion alquiler</span>
+                      <span className="text-on-surface-medium font-semibold">
+                        Devolucion alquiler
+                      </span>
                       <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
                         S/ {Number(termination.rentRefund).toFixed(2)}
                       </span>
@@ -664,20 +833,22 @@ export default function DepartmentBilling() {
                 </div>
               </div>
             ) : (
-              /* ── Termination form ── */
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
-                      Fecha real de salida
-                    </label>
-                    <input
-                      type="date"
-                      value={actualDepartureDate}
-                      onChange={(e) => setActualDepartureDate(e.target.value)}
-                      className={inputCls}
-                    />
-                  </div>
+                <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1">
+                  <span className="text-[13px] font-medium text-on-surface-medium">
+                    Fecha real de salida
+                  </span>
+                  <span className="text-[14px] font-semibold text-on-surface">
+                    {departureDay
+                      ? new Date(
+                          actualDepartureDate + 'T12:00:00',
+                        ).toLocaleDateString('es-PE', {
+                          day: '2-digit',
+                          month: 'long',
+                          year: 'numeric',
+                        })
+                      : '— (ingresa Día de salida)'}
+                  </span>
                 </div>
 
                 <div>
@@ -693,74 +864,173 @@ export default function DepartmentBilling() {
                   />
                 </div>
 
-                <div className="bg-surface-alt rounded-xl p-3 space-y-2">
-                  <div className="flex justify-between text-[13px]">
-                    <span className="text-on-surface-medium">Deposito de garantia</span>
-                    <span className="font-medium text-on-surface">S/ {guaranteeDepositAmt.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-[13px]">
-                    <span className="text-on-surface-medium">Deduccion (danos, etc.)</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={guaranteeDeduction}
-                      onChange={(e) => setGuaranteeDeduction(e.target.value)}
-                      className={inputCls + ' max-w-[120px] text-right'}
-                    />
-                  </div>
-                  {servicesCostPreview > 0 && (
-                    <div className="flex justify-between text-[13px]">
-                      <span className="text-on-surface-medium">
-                        Servicios del mes
-                        {rentRefundRawPreview > 0
-                          ? servicesFromGuaranteePreview > 0
-                            ? ' (alq. + garantia)'
-                            : ' (de devol. alquiler)'
-                          : ' (de garantia)'}
-                      </span>
-                      <span className="font-medium text-red-600 dark:text-red-400">
-                        − S/ {servicesCostPreview.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-[13px] font-semibold border-t border-border pt-2">
-                    <span className="text-on-surface-medium">A devolver (garantia)</span>
-                    <span className="text-emerald-600 dark:text-emerald-400">
-                      S/ {guaranteeReturnPreview.toFixed(2)}
-                    </span>
-                  </div>
-                  {rentRefundPreview > 0 && (
-                    <div className="flex justify-between text-[13px] font-semibold">
-                      <span className="text-on-surface-medium">Devolucion alquiler</span>
-                      <span className="text-emerald-600 dark:text-emerald-400">
-                        S/ {rentRefundPreview.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-[13px] pt-1">
-                    <span className="text-on-surface-medium">Adelanto aplicado</span>
-                    <span className="font-medium text-on-surface">
-                      S/ {(contract ? Number(contract.advancePayment) : 0).toFixed(2)} → cubre ultimo mes
-                    </span>
-                  </div>
-                </div>
+                <p className="text-[12px] text-on-surface-muted">
+                  Las reparaciones o daños se registran como cargos extras
+                  arriba — se descontarán automáticamente de los créditos.
+                </p>
 
                 <button
                   onClick={handleTerminate}
-                  disabled={!actualDepartureDate || terminationLoading}
+                  disabled={
+                    !departureDay ||
+                    missingReceiptMonths.length > 0 ||
+                    terminationLoading
+                  }
                   className="w-full py-2.5 bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:bg-surface-raised disabled:text-on-surface-faint text-white text-sm font-medium rounded-xl shadow-sm transition-all duration-150 flex items-center justify-center gap-2"
                 >
                   <Ban size={15} />
-                  {terminationLoading ? 'Procesando...' : 'Confirmar cierre de contrato'}
+                  {terminationLoading
+                    ? 'Procesando...'
+                    : 'Confirmar cierre de contrato'}
                 </button>
+                {missingReceiptMonths.length > 0 && (
+                  <p className="text-[12px] text-red-600 dark:text-red-400">
+                    Faltan recibos:{' '}
+                    {missingReceiptMonths
+                      .map((p) => `${monthAbbr[p.month - 1]} ${p.year}`)
+                      .join(', ')}
+                    . Genera los recibos pendientes antes de cerrar el contrato.
+                  </p>
+                )}
+              </div>
+            )}
+            </div>
+
+            {!termination && (
+              <div className="lg:col-span-2 space-y-3">
+                <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-xl border border-emerald-200/60 dark:border-emerald-800/40 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 mb-2">
+                    Créditos disponibles
+                  </p>
+                  <div className="space-y-1 text-[13px]">
+                    <div className="flex justify-between">
+                      <span className="text-on-surface-medium">Adelanto</span>
+                      <span className="font-medium text-on-surface">
+                        S/ {advanceAmt.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-on-surface-medium">Garantía</span>
+                      <span className="font-medium text-on-surface">
+                        S/ {guaranteeDepositAmt.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-emerald-200/60 dark:border-emerald-800/40 pt-1.5 mt-1.5 font-semibold">
+                      <span className="text-emerald-700 dark:text-emerald-300">
+                        Total créditos
+                      </span>
+                      <span className="text-emerald-700 dark:text-emerald-300">
+                        S/ {creditsTotal.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-red-50 dark:bg-red-950/30 rounded-xl border border-red-200/60 dark:border-red-800/40 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-red-700 dark:text-red-300 mb-2">
+                    Total facturado del mes
+                  </p>
+                  <div className="space-y-1 text-[13px]">
+                    <div className="flex justify-between">
+                      <span className="text-on-surface-medium">
+                        Alquiler{departureDay ? ' (prorr.)' : ''}
+                      </span>
+                      <span className="font-medium text-on-surface">
+                        S/ {rentAmount.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-on-surface-medium">Luz</span>
+                      <span className="font-medium text-on-surface">
+                        S/ {lightCost.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-on-surface-medium">Agua</span>
+                      <span className="font-medium text-on-surface">
+                        S/ {waterCost.toFixed(2)}
+                      </span>
+                    </div>
+                    {manualExtrasTotal > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-on-surface-medium">
+                          Extras / reparaciones
+                        </span>
+                        <span className="font-medium text-on-surface">
+                          S/ {manualExtrasTotal.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {lateFeeTotal > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-on-surface-medium">Mora</span>
+                        <span className="font-medium text-on-surface">
+                          S/ {lateFeeTotal.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between border-t border-red-200/60 dark:border-red-800/40 pt-1.5 mt-1.5 font-semibold">
+                      <span className="text-red-700 dark:text-red-300">
+                        Total facturado
+                      </span>
+                      <span className="text-red-700 dark:text-red-300">
+                        S/ {total.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-surface-alt rounded-xl border border-border p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-muted mb-2">
+                    Resumen
+                  </p>
+                  <div className="space-y-1 text-[13px]">
+                    <div className="flex justify-between">
+                      <span className="text-on-surface-medium">Créditos</span>
+                      <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                        + S/ {creditsTotal.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-on-surface-medium">Facturado</span>
+                      <span className="font-medium text-red-600 dark:text-red-400">
+                        − S/ {total.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="border-t border-border pt-2 mt-1">
+                      {balanceSummary > 0 ? (
+                        <div className="flex justify-between font-bold">
+                          <span className="text-on-surface">
+                            A devolver al inquilino
+                          </span>
+                          <span className="text-emerald-600 dark:text-emerald-400">
+                            S/ {balanceSummary.toFixed(2)}
+                          </span>
+                        </div>
+                      ) : balanceSummary < 0 ? (
+                        <div className="flex justify-between font-bold">
+                          <span className="text-on-surface">
+                            Saldo a cobrar al inquilino
+                          </span>
+                          <span className="text-red-600 dark:text-red-400">
+                            S/ {Math.abs(balanceSummary).toFixed(2)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between font-bold">
+                          <span className="text-on-surface">Balance</span>
+                          <span className="text-on-surface">S/ 0.00</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* No contract warning */}
       {!contract && (
         <div className="mb-6 px-4 py-3 rounded-xl bg-status-warning-bg border border-status-warning-border text-status-warning-text text-sm flex items-center gap-2">
           <AlertTriangle size={16} />
@@ -768,7 +1038,6 @@ export default function DepartmentBilling() {
         </div>
       )}
 
-      {/* Missing readings warning */}
       {contract && (!lightHasReadings || !waterHasReadings) && (
         <div className="mb-6 px-4 py-3 rounded-xl bg-status-warning-bg border border-status-warning-border text-status-warning-text text-sm flex items-center gap-2">
           <AlertTriangle size={16} />
@@ -777,7 +1046,6 @@ export default function DepartmentBilling() {
         </div>
       )}
 
-      {/* Billing Summary */}
       {contract && (
         <div className="bg-surface rounded-2xl border border-border p-5 shadow-sm mb-6">
           <h2 className="text-lg font-semibold text-on-surface-strong mb-4">
@@ -785,7 +1053,6 @@ export default function DepartmentBilling() {
           </h2>
 
           <div className="space-y-2">
-            {/* Rent */}
             <div className="flex justify-between text-sm">
               <span className="text-on-surface-medium">Alquiler</span>
               <span className="font-medium text-on-surface">
@@ -793,58 +1060,63 @@ export default function DepartmentBilling() {
               </span>
             </div>
 
-            {/* Light */}
             <div className="flex justify-between text-sm">
               <span className="text-on-surface-medium">
-                Luz{' '}
-                {lightUnits !== null ? `(${lightUnits} u)` : ''}
+                Luz {lightUnits !== null ? `(${lightUnits} u)` : ''}
               </span>
               {lightHasReadings ? (
                 <span className="font-medium text-on-surface">
                   S/ {lightCost.toFixed(2)}
                 </span>
               ) : (
-                <span className="text-amber-600 dark:text-amber-400 font-medium">Pendiente</span>
+                <span className="text-amber-600 dark:text-amber-400 font-medium">
+                  Pendiente
+                </span>
               )}
             </div>
 
-            {/* Water */}
             <div className="flex justify-between text-sm">
               <span className="text-on-surface-medium">
-                Agua{' '}
-                {waterUnits !== null ? `(${waterUnits} u)` : ''}
+                Agua {waterUnits !== null ? `(${waterUnits} u)` : ''}
               </span>
               {waterHasReadings ? (
                 <span className="font-medium text-on-surface">
                   S/ {waterCost.toFixed(2)}
                 </span>
               ) : (
-                <span className="text-amber-600 dark:text-amber-400 font-medium">Pendiente</span>
+                <span className="text-amber-600 dark:text-amber-400 font-medium">
+                  Pendiente
+                </span>
               )}
             </div>
 
-            {/* Extra charges */}
             {extraCharges.map((ec) => (
               <div key={ec.id} className="flex justify-between text-sm">
-                <span className="text-on-surface-medium">
+                <span className="text-on-surface-medium flex items-center gap-1.5">
                   Otros: {ec.description}
+                  {ec.type === 'late_fee' && (
+                    <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200/50 dark:ring-amber-700/40">
+                      MORA
+                    </span>
+                  )}
                 </span>
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-on-surface">
                     S/ {Number(ec.amount).toFixed(2)}
                   </span>
-                  <button
-                    onClick={() => handleDeleteCharge(ec.id)}
-                    className="text-red-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                    title="Eliminar"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {ec.type !== 'late_fee' && (
+                    <button
+                      onClick={() => handleDeleteCharge(ec.id)}
+                      className="text-red-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                      title="Eliminar"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
 
-            {/* Separator + Total */}
             <div className="border-t border-border pt-2 mt-2">
               <div className="flex justify-between text-sm font-bold">
                 <span className="text-on-surface">Total</span>
@@ -855,16 +1127,17 @@ export default function DepartmentBilling() {
         </div>
       )}
 
-      {/* Add extra charge */}
       {contract && !isTerminated && (
         <div className="bg-surface rounded-2xl border border-border p-5 shadow-sm mb-6">
           <h3 className="text-sm font-semibold text-on-surface-strong mb-3 flex items-center gap-2">
             <Plus size={16} className="text-primary-600" />
-            Agregar Cargo Extra
+            {showDeparture
+              ? 'Agregar Cargo Extra o Reparación'
+              : 'Agregar Cargo Extra'}
           </h3>
           <form
             onSubmit={handleAddCharge}
-            className="flex items-end gap-3"
+            className="flex flex-col sm:flex-row sm:items-end gap-3"
           >
             <div className="flex-1">
               <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
@@ -874,12 +1147,16 @@ export default function DepartmentBilling() {
                 type="text"
                 value={chargeDesc}
                 onChange={(e) => setChargeDesc(e.target.value)}
-                placeholder="TV Cable, Limpieza, etc."
+                placeholder={
+                  showDeparture
+                    ? 'TV Cable, Limpieza, Reparación de lavabo, Pintura, etc.'
+                    : 'TV Cable, Limpieza, etc.'
+                }
                 required
                 className={inputCls}
               />
             </div>
-            <div className="w-32">
+            <div className="w-full sm:w-32">
               <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
                 Monto (S/)
               </label>
@@ -900,20 +1177,69 @@ export default function DepartmentBilling() {
         </div>
       )}
 
-      {/* Receipt status indicator */}
+      {contract && !isTerminated && overdueReceipts.length > 0 && (
+        <div className="bg-surface rounded-2xl border border-border p-5 shadow-sm mb-6">
+          <h3 className="text-sm font-semibold text-on-surface-strong mb-3 flex items-center gap-2">
+            <AlertTriangle size={16} className="text-amber-500" />
+            Generar Mora por Atraso
+          </h3>
+          <div className="space-y-3">
+            {overdueReceipts.map((r) => (
+              <div
+                key={`${r.month}-${r.year}`}
+                className="flex flex-col sm:flex-row sm:items-center gap-3"
+              >
+                <div className="flex-1 text-[13px]">
+                  <span className="text-on-surface-medium">
+                    Recibo de {months[r.month - 1]} {r.year} — Saldo
+                    pendiente:{' '}
+                  </span>
+                  <span className="font-medium text-red-600 dark:text-red-400">
+                    S/ {Math.abs(r.balance).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={lateFeeRate}
+                    onChange={(e) => setLateFeeRate(e.target.value)}
+                    className={inputCls + ' max-w-[100px] text-right'}
+                    title="Tarifa por dia de atraso"
+                  />
+                  <span className="text-[13px] text-on-surface-medium">
+                    S//dia
+                  </span>
+                  <button
+                    onClick={() => handleGenerateLateFee(r.month, r.year)}
+                    disabled={lateFeeLoading}
+                    className={btnCls}
+                  >
+                    {lateFeeLoading ? 'Generando...' : 'Generar Mora'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {contract && receipt && (
         <div className="mb-4 px-4 py-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-700/40 text-blue-700 dark:text-blue-300 text-sm flex items-center gap-2">
           <FileText size={16} />
           <div>
-            <span className="font-semibold">Recibo existente para {months[month - 1]} {year}</span>
+            <span className="font-semibold">
+              Recibo existente para {months[month - 1]} {year}
+            </span>
             <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
-              Estado: {receiptStatusLabel[receipt.status]} • Total: S/ {receipt.totalDue.toFixed(2)}
+              Estado: {receiptStatusLabel[receipt.status]} • Total: S/{' '}
+              {receipt.totalDue.toFixed(2)}
             </p>
           </div>
         </div>
       )}
 
-      {/* Generate receipt button */}
       {contract && !isTerminated && (
         <button
           onClick={handleGenerateReceipt}
@@ -921,11 +1247,14 @@ export default function DepartmentBilling() {
           className="w-full py-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-surface-raised disabled:text-on-surface-faint text-white text-sm font-medium rounded-xl shadow-sm shadow-blue-600/20 transition-all duration-150 flex items-center justify-center gap-2"
         >
           <FileText size={16} />
-          {receiptLoading ? 'Generando...' : receipt ? 'Regenerar Recibo' : 'Generar Recibo'}
+          {receiptLoading
+            ? 'Generando...'
+            : receipt
+              ? 'Regenerar Recibo'
+              : 'Generar Recibo'}
         </button>
       )}
 
-      {/* Receipt Modal */}
       <Modal
         isOpen={receiptModal}
         onClose={() => setReceiptModal(false)}
@@ -954,7 +1283,9 @@ export default function DepartmentBilling() {
               <div className="space-y-1 pt-2">
                 {receipt.items.map((item, i) => (
                   <div key={i} className="flex justify-between text-sm">
-                    <span className="text-on-surface-medium">{item.description}</span>
+                    <span className="text-on-surface-medium">
+                      {item.description}
+                    </span>
                     <span className="font-medium">
                       S/ {item.amount.toFixed(2)}
                     </span>
@@ -980,7 +1311,9 @@ export default function DepartmentBilling() {
                 <span>Balance</span>
                 <span
                   className={
-                    receipt.balance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                    receipt.balance >= 0
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-red-600 dark:text-red-400'
                   }
                 >
                   S/ {receipt.balance.toFixed(2)}
@@ -988,7 +1321,6 @@ export default function DepartmentBilling() {
               </div>
             </div>
 
-            {/* Action buttons */}
             <div className="flex gap-2 pt-2">
               {receipt.status === 'pending_review' && (
                 <>

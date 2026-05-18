@@ -73,13 +73,31 @@ export class ContractController {
     return this.contractService.remove(id);
   }
 
+  @Get(':id/receipts/months')
+  listReceiptMonths(
+    @Param('id') contractId: string,
+  ): Promise<Array<{ month: number; year: number; status: string }>> {
+    return this.receiptService.findReceiptMonthsByContract(contractId);
+  }
+
   @Get(':id/receipts')
   previewReceipt(
     @Param('id') contractId: string,
     @Query('month', ParseIntPipe) month: number,
     @Query('year', ParseIntPipe) year: number,
+    @Query('startDay', new ParseIntPipe({ optional: true })) startDay?: number,
+    @Query('endDay', new ParseIntPipe({ optional: true })) endDay?: number,
+    @Query('prorateRent', new ParseBoolPipe({ optional: true }))
+    prorateRent?: boolean,
   ): Promise<Receipt> {
-    return this.receiptService.previewReceipt(contractId, month, year);
+    return this.receiptService.previewReceipt(
+      contractId,
+      month,
+      year,
+      startDay,
+      endDay,
+      prorateRent,
+    );
   }
 
   @Post(':id/receipts')
@@ -89,9 +107,19 @@ export class ContractController {
     @Query('year', ParseIntPipe) year: number,
     @Query('startDay', new ParseIntPipe({ optional: true })) startDay?: number,
     @Query('endDay', new ParseIntPipe({ optional: true })) endDay?: number,
-    @Query('prorateRent', new ParseBoolPipe({ optional: true })) prorateRent?: boolean,
+    @Query('prorateRent', new ParseBoolPipe({ optional: true }))
+    prorateRent?: boolean,
+    @Query('force', new ParseBoolPipe({ optional: true })) force?: boolean,
   ): Promise<Receipt> {
-    return this.receiptService.issueReceipt(contractId, month, year, startDay, endDay, prorateRent);
+    return this.receiptService.issueReceipt(
+      contractId,
+      month,
+      year,
+      startDay,
+      endDay,
+      prorateRent,
+      force,
+    );
   }
 
   @Patch(':id/receipts/status')

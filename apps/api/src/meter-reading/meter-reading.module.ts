@@ -9,5 +9,6 @@ import { DepartmentMeter } from '../department-meter/entities/department-meter.e
   imports: [TypeOrmModule.forFeature([MeterReading, DepartmentMeter])],
   controllers: [MeterReadingController],
   providers: [MeterReadingService],
+  exports: [MeterReadingService],
 })
 export class MeterReadingModule {}

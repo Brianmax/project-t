@@ -53,14 +53,14 @@ describe('TenantService', () => {
       });
     });
 
-    it('should return a tenant with null documentId when documentId is not set', async () => {
+    it('should return a tenant with null email when email is not set', async () => {
       const tenantId = 'test-uuid-5678';
       const mockTenant: Tenant = {
         id: tenantId,
         name: 'Maria Lopez',
-        email: 'maria@example.com',
-        phone: null as unknown as string,
-        documentId: null as unknown as string,
+        email: null,
+        phone: '987654321',
+        documentId: 'DNI-456',
       };
 
       mockTenantRepository.findOne.mockResolvedValue(mockTenant);
@@ -68,7 +68,9 @@ describe('TenantService', () => {
       const result = await service.findOne(tenantId);
 
       expect(result).toEqual(mockTenant);
-      expect(result.documentId).toBeNull();
+      expect(result.email).toBeNull();
+      expect(result.phone).toBe('987654321');
+      expect(result.documentId).toBe('DNI-456');
     });
 
     it('should throw NotFoundException when tenant does not exist', async () => {

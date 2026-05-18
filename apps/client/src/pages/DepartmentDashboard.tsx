@@ -15,13 +15,20 @@ import {
   Pencil,
 } from 'lucide-react';
 import { apiFetch, apiPost } from '../lib/api';
-import Spinner from '../components/Spinner';
+import { PageSkeleton, TableSkeleton } from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
-import { inputCls, btnCls } from '../lib/styles';
+import { showSuccess, showError } from '../lib/toast';
+import {
+  inputCls,
+  btnCls,
+  tableContainerCls,
+  tableHeaderCls,
+  tableHeaderCellCls,
+  tableRowCls,
+  tableCellCls,
+} from '../lib/styles';
 import DatePicker from '../components/DatePicker';
-
-// ── Types ──────────────────────────────────────────────
 
 interface Property {
   id: string;
@@ -44,14 +51,26 @@ interface DepartmentMeter {
 }
 
 interface ConsumptionData {
-  light: { consumption: number; cost: number; lastReading: number | null; prevReading: number | null };
-  water: { consumption: number; cost: number; lastReading: number | null; prevReading: number | null };
+  light: {
+    consumption: number;
+    cost: number;
+    lastReading: number | null;
+    prevReading: number | null;
+  };
+  water: {
+    consumption: number;
+    cost: number;
+    lastReading: number | null;
+    prevReading: number | null;
+  };
 }
 
 interface MeterReading {
   id: string;
   reading: number;
   date: string;
+  billingMonth: number | null;
+  billingYear: number | null;
   departmentMeter: DepartmentMeter;
   departmentMeterId: string;
 }
@@ -59,8 +78,9 @@ interface MeterReading {
 interface Tenant {
   id: string;
   name: string;
-  email: string;
-  phone?: string;
+  email: string | null;
+  phone: string;
+  documentId: string;
 }
 
 interface Contract {
@@ -71,8 +91,6 @@ interface Contract {
   departmentId: string;
   tenant: Tenant;
 }
-
-// ── Component ──────────────────────────────────────────
 
 export default function DepartmentDashboard() {
   const { id } = useParams<{ id: string }>();
@@ -88,52 +106,57 @@ export default function DepartmentDashboard() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  // Reading form state
   const [lightValue, setLightValue] = useState('');
   const [waterValue, setWaterValue] = useState('');
-  const [readingDate, setReadingDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [readingDate, setReadingDate] = useState(() =>
+    new Date().toISOString().slice(0, 10),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [readingModalOpen, setReadingModalOpen] = useState(false);
 
-  // Edit reading state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editSubmitting, setEditSubmitting] = useState(false);
 
-  // Add missing reading state
-  const [addMissing, setAddMissing] = useState<{ type: 'light' | 'water'; month: number; year: number } | null>(null);
+  const [addMissing, setAddMissing] = useState<{
+    type: 'light' | 'water';
+    month: number;
+    year: number;
+  } | null>(null);
   const [addMissingValue, setAddMissingValue] = useState('');
   const [addMissingDate, setAddMissingDate] = useState('');
   const [addMissingSubmitting, setAddMissingSubmitting] = useState(false);
 
+  const fetchData = useCallback(
+    () =>
+      Promise.all([
+        apiFetch<Department>(`/departments/${departmentId}`),
+        apiFetch<DepartmentMeter[]>('/department-meters'),
+        apiFetch<ConsumptionData>(`/departments/${departmentId}/consumption`),
+        apiFetch<Contract[]>('/contracts'),
+      ])
+        .then(([dept, allMeters, cons, allContracts]) => {
+          setDepartment(dept);
 
-  // ── Fetch data ────────────────────────────────────────
+          const contract =
+            allContracts.find((c) => c.departmentId === departmentId) ?? null;
+          setActiveContract(contract);
 
-  const fetchData = useCallback(() =>
-    Promise.all([
-      apiFetch<Department>(`/departments/${departmentId}`),
-      apiFetch<DepartmentMeter[]>('/department-meters'),
-      apiFetch<ConsumptionData>(`/departments/${departmentId}/consumption`),
-      apiFetch<Contract[]>('/contracts'),
-    ])
-      .then(([dept, allMeters, cons, allContracts]) => {
-        setDepartment(dept);
+          const deptMeters = allMeters.filter(
+            (m) => m.department?.id === departmentId,
+          );
+          setMeters(deptMeters);
 
-        // Find active contract for this department
-        const contract = allContracts.find((c) => c.departmentId === departmentId) ?? null;
-        setActiveContract(contract);
-
-        const deptMeters = allMeters.filter((m) => m.department?.id === departmentId);
-        setMeters(deptMeters);
-
-        setConsumption(cons);
-      })
-      .catch(() => setError('No se pudieron cargar los datos del departamento'))
-      .finally(() => setLoading(false)),
-    [departmentId]);
+          setConsumption(cons);
+        })
+        .catch(() =>
+          showError('No se pudieron cargar los datos del departamento'),
+        )
+        .finally(() => setLoading(false)),
+    [departmentId],
+  );
 
   useEffect(() => {
     fetchData();
@@ -157,12 +180,14 @@ export default function DepartmentDashboard() {
       const allReadings = await apiFetch<MeterReading[]>('/meter-readings');
       const meterIds = new Set(meters.map((m) => m.id));
       const deptReadings = allReadings
-        .filter((r) => meterIds.has(r.departmentMeterId ?? r.departmentMeter?.id))
+        .filter((r) =>
+          meterIds.has(r.departmentMeterId ?? r.departmentMeter?.id),
+        )
         .sort((a, b) => b.date.localeCompare(a.date));
       setReadings(deptReadings);
       setHistoryLoaded(true);
     } catch {
-      setError('Error al cargar historial de lecturas');
+      showError('Error al cargar historial de lecturas');
     } finally {
       setHistoryLoading(false);
     }
@@ -174,8 +199,6 @@ export default function DepartmentDashboard() {
     }
   }, [historyOpen, historyLoaded, historyLoading, fetchReadingsHistory]);
 
-  // ── Validation ────────────────────────────────────────
-
   const lightMeter = meters.find((m) => m.meterType === 'light');
   const waterMeter = meters.find((m) => m.meterType === 'water');
 
@@ -183,16 +206,18 @@ export default function DepartmentDashboard() {
   const waterLastReading = consumption?.water.lastReading ?? null;
 
   const lightError =
-    lightValue !== '' && lightLastReading !== null && Number(lightValue) < lightLastReading
+    lightValue !== '' &&
+    lightLastReading !== null &&
+    Number(lightValue) < lightLastReading
       ? `Debe ser mayor a la lectura anterior (${lightLastReading})`
       : null;
 
   const waterError =
-    waterValue !== '' && waterLastReading !== null && Number(waterValue) < waterLastReading
+    waterValue !== '' &&
+    waterLastReading !== null &&
+    Number(waterValue) < waterLastReading
       ? `Debe ser mayor a la lectura anterior (${waterLastReading})`
       : null;
-
-  // ── Submit handlers ───────────────────────────────────
 
   const submitReadings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -201,10 +226,22 @@ export default function DepartmentDashboard() {
     try {
       const posts: Promise<unknown>[] = [];
       if (lightMeter && lightValue) {
-        posts.push(apiPost('/meter-readings', { reading: Number(lightValue), date: readingDate, departmentMeterId: lightMeter.id }));
+        posts.push(
+          apiPost('/meter-readings', {
+            reading: Number(lightValue),
+            date: readingDate,
+            departmentMeterId: lightMeter.id,
+          }),
+        );
       }
       if (waterMeter && waterValue) {
-        posts.push(apiPost('/meter-readings', { reading: Number(waterValue), date: readingDate, departmentMeterId: waterMeter.id }));
+        posts.push(
+          apiPost('/meter-readings', {
+            reading: Number(waterValue),
+            date: readingDate,
+            departmentMeterId: waterMeter.id,
+          }),
+        );
       }
       await Promise.all(posts);
       setLightValue('');
@@ -212,17 +249,20 @@ export default function DepartmentDashboard() {
       setReadingModalOpen(false);
       await fetchData();
       if (historyLoaded) await fetchReadingsHistory();
+      showSuccess('Lecturas registradas exitosamente');
     } catch {
-      setError('Error al registrar lecturas');
+      showError('Error al registrar lecturas');
     } finally {
       setSubmitting(false);
     }
   };
 
-  // ── Helpers ───────────────────────────────────────────
-
   const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' });
+    new Date(d).toLocaleDateString('es-PE', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
 
   const openEdit = (id: string, value: number, date: string) => {
     setEditingId(id);
@@ -242,17 +282,23 @@ export default function DepartmentDashboard() {
       setEditingId(null);
       await fetchReadingsHistory();
       await fetchData();
+      showSuccess('Lectura actualizada exitosamente');
     } catch {
-      setError('Error al actualizar la lectura');
+      showError('Error al actualizar la lectura');
     } finally {
       setEditSubmitting(false);
     }
   };
 
-  const openAddMissing = (type: 'light' | 'water', month: number, year: number) => {
-    // month is 0-indexed; pre-fill date to last day of that month
+  const openAddMissing = (
+    type: 'light' | 'water',
+    month: number,
+    year: number,
+  ) => {
     const lastDay = new Date(year, month + 1, 0).getDate();
-    setAddMissingDate(`${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
+    setAddMissingDate(
+      `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`,
+    );
     setAddMissingValue('');
     setAddMissing({ type, month, year });
   };
@@ -272,15 +318,15 @@ export default function DepartmentDashboard() {
       setAddMissing(null);
       await fetchReadingsHistory();
       await fetchData();
+      showSuccess('Lectura agregada exitosamente');
     } catch {
-      setError('Error al agregar lectura');
+      showError('Error al agregar lectura');
     } finally {
       setAddMissingSubmitting(false);
     }
   };
 
   const openReadingModal = () => {
-    setError(null);
     setLightValue('');
     setWaterValue('');
     setReadingDate(new Date().toISOString().slice(0, 10));
@@ -312,6 +358,7 @@ export default function DepartmentDashboard() {
       key: string;
       year: number;
       month: number;
+      label: string;
       light: number | null;
       water: number | null;
       lightDate: string | null;
@@ -319,79 +366,92 @@ export default function DepartmentDashboard() {
       lightId: string | null;
       waterId: string | null;
     };
-    const rows = new Map<string, Row>();
-    for (const reading of readings) {
-      const rawDate = String(reading.date ?? '');
+
+    const getBillingMonth = (
+      r: MeterReading,
+    ): { year: number; month: number } | null => {
+      if (r.billingMonth != null && r.billingYear != null) {
+        return { year: r.billingYear, month: r.billingMonth - 1 };
+      }
+      const rawDate = String(r.date ?? '');
       const match = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (!match) {
-        continue;
-      }
-      let year = Number(match[1]);
-      let month = Number(match[2]) - 1; // 0-11
+      if (!match) return null;
+      let y = Number(match[1]);
+      let m = Number(match[2]) - 1;
       const day = Number(match[3]);
-
-      // Business rule:
-      // - Reading on day 1 belongs to previous month.
-      // - Any other day belongs to the same month.
       if (day === 1) {
-        month -= 1;
-        if (month < 0) {
-          month = 11;
-          year -= 1;
+        m -= 1;
+        if (m < 0) {
+          m = 11;
+          y -= 1;
         }
       }
+      return { year: y, month: m };
+    };
 
-      const key = `${year}-${month}`;
+    const grouped = new Map<string, Row>();
+
+    for (const r of readings) {
+      const bm = getBillingMonth(r);
+      if (!bm) continue;
       const meterType =
-        reading.departmentMeter?.meterType ?? meterTypeById.get(reading.departmentMeterId);
-      if (!meterType) {
-        continue;
+        r.departmentMeter?.meterType ?? meterTypeById.get(r.departmentMeterId);
+      if (!meterType) continue;
+
+      const rawDate = String(r.date ?? '');
+      const dateKey = rawDate.slice(0, 10);
+      const billingKey = `${bm.year}-${bm.month}`;
+      const rowKey = `${billingKey}__${dateKey}`;
+
+      if (!grouped.has(rowKey)) {
+        grouped.set(rowKey, {
+          key: rowKey,
+          year: bm.year,
+          month: bm.month,
+          label: `${monthNames[bm.month]} ${bm.year} (${dateKey})`,
+          light: null,
+          water: null,
+          lightDate: null,
+          waterDate: null,
+          lightId: null,
+          waterId: null,
+        });
       }
 
-      const row = rows.get(key) ?? {
-        key,
-        year,
-        month,
-        light: null,
-        water: null,
-        lightDate: null,
-        waterDate: null,
-        lightId: null as string | null,
-        waterId: null as string | null,
-      };
-
+      const row = grouped.get(rowKey)!;
       if (meterType === 'light') {
-        if (!row.lightDate || rawDate > row.lightDate) {
-          row.light = Number(reading.reading);
-          row.lightDate = rawDate;
-          row.lightId = reading.id;
-        }
+        row.light = Number(r.reading);
+        row.lightDate = rawDate;
+        row.lightId = r.id;
       } else if (meterType === 'water') {
-        if (!row.waterDate || rawDate > row.waterDate) {
-          row.water = Number(reading.reading);
-          row.waterDate = rawDate;
-          row.waterId = reading.id;
-        }
+        row.water = Number(r.reading);
+        row.waterDate = rawDate;
+        row.waterId = r.id;
       }
-
-      rows.set(key, row);
     }
 
-    return Array.from(rows.values()).sort(
-      (a, b) => b.year - a.year || b.month - a.month,
+    return Array.from(grouped.values()).sort(
+      (a, b) => b.year - a.year || b.month - a.month || b.key.localeCompare(a.key),
     );
   }, [readings, meterTypeById]);
 
-  // ── Render ────────────────────────────────────────────
-
-  if (loading) return <Spinner />;
+  if (loading) return <PageSkeleton />;
 
   if (!department) {
     return (
       <div className="animate-fade-in">
-        <EmptyState icon={DoorOpen} title="Departamento no encontrado" description="El departamento solicitado no existe." />
+        <EmptyState
+          icon={DoorOpen}
+          title="Departamento no encontrado"
+          description="El departamento solicitado no existe."
+        />
         <div className="text-center mt-4">
-          <Link to="/properties" className="text-primary-600 hover:underline text-sm">Volver a Propiedades</Link>
+          <Link
+            to="/properties"
+            className="text-primary-600 hover:underline text-sm"
+          >
+            Volver a Propiedades
+          </Link>
         </div>
       </div>
     );
@@ -399,17 +459,22 @@ export default function DepartmentDashboard() {
 
   return (
     <div className="animate-fade-in max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
         <Link
-          to={department.property ? `/properties/${department.property.id}` : '/departments'}
+          to={
+            department.property
+              ? `/properties/${department.property.id}`
+              : '/departments'
+          }
           className="w-10 h-10 rounded-xl bg-surface-raised flex items-center justify-center text-on-surface-medium hover:bg-surface-raised hover:text-on-surface-strong transition-all duration-150 flex-shrink-0"
         >
           <ArrowLeft size={20} />
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold text-on-surface tracking-tight truncate">{department.name}</h1>
-          <div className="flex items-center gap-4 text-[13px] text-on-surface-muted mt-0.5">
+          <h1 className="text-2xl font-bold text-on-surface tracking-tight truncate">
+            {department.name}
+          </h1>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-on-surface-muted mt-0.5">
             <div className="flex items-center gap-1.5">
               <Layers size={14} />
               Piso {department.floor}
@@ -418,7 +483,9 @@ export default function DepartmentDashboard() {
               <BedDouble size={14} />
               {department.numberOfRooms} hab.
             </div>
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ${department.isAvailable ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 ring-emerald-200/50 dark:ring-emerald-700/40' : 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 ring-red-200/50 dark:ring-red-700/40'}`}>
+            <span
+              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ${department.isAvailable ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 ring-emerald-200/50 dark:ring-emerald-700/40' : 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 ring-red-200/50 dark:ring-red-700/40'}`}
+            >
               {department.isAvailable ? 'Disponible' : 'Ocupado'}
             </span>
           </div>
@@ -433,39 +500,37 @@ export default function DepartmentDashboard() {
         </button>
       </div>
 
-      {error && (
-        <div className="mb-4 px-4 py-3 rounded-xl bg-status-danger-bg border border-status-danger-border text-status-danger-text text-sm">
-          {error}
-          <button onClick={() => setError(null)} className="ml-2 underline">Cerrar</button>
-        </div>
-      )}
-
-      {/* Tenant Card */}
       {activeContract?.tenant && (
         <div className="bg-surface rounded-2xl border border-border p-5 shadow-sm mb-8">
-          <h2 className="text-lg font-semibold text-on-surface-strong mb-3">Inquilino</h2>
+          <h2 className="text-lg font-semibold text-on-surface-strong mb-3">
+            Inquilino
+          </h2>
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900/40 ring-1 ring-emerald-200/50 dark:ring-emerald-700/40 flex items-center justify-center text-emerald-700 dark:text-emerald-300 font-bold text-lg flex-shrink-0">
               {activeContract.tenant.name.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <Link to={`/tenants/${activeContract.tenant.id}`} className="font-semibold text-on-surface hover:text-primary-600 hover:underline">
+              <Link
+                to={`/tenants/${activeContract.tenant.id}`}
+                className="font-semibold text-on-surface hover:text-primary-600 hover:underline"
+              >
                 {activeContract.tenant.name}
               </Link>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-[13px] text-on-surface-muted">
-                <div className="flex items-center gap-1.5">
-                  <Mail size={13} className="text-on-surface-faint" />
-                  {activeContract.tenant.email}
-                </div>
-                {activeContract.tenant.phone && (
+                {activeContract.tenant.email && (
                   <div className="flex items-center gap-1.5">
-                    <Phone size={13} className="text-on-surface-faint" />
-                    {activeContract.tenant.phone}
+                    <Mail size={13} className="text-on-surface-faint" />
+                    {activeContract.tenant.email}
                   </div>
                 )}
                 <div className="flex items-center gap-1.5">
+                  <Phone size={13} className="text-on-surface-faint" />
+                  {activeContract.tenant.phone}
+                </div>
+                <div className="flex items-center gap-1.5">
                   <Calendar size={13} className="text-on-surface-faint" />
-                  {formatDate(activeContract.startDate)} — {formatDate(activeContract.endDate)}
+                  {formatDate(activeContract.startDate)} —{' '}
+                  {formatDate(activeContract.endDate)}
                 </div>
               </div>
             </div>
@@ -473,9 +538,10 @@ export default function DepartmentDashboard() {
         </div>
       )}
 
-      {/* Consumption Cards */}
       <div className="flex items-center justify-between gap-3 mb-3">
-        <h2 className="text-lg font-semibold text-on-surface-strong">Consumo Actual</h2>
+        <h2 className="text-lg font-semibold text-on-surface-strong">
+          Consumo Actual
+        </h2>
         {(lightMeter || waterMeter) && (
           <button
             type="button"
@@ -488,7 +554,6 @@ export default function DepartmentDashboard() {
         )}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-        {/* Light */}
         <div className="bg-surface rounded-2xl border border-border p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-100 dark:ring-amber-800/40 flex items-center justify-center">
@@ -499,61 +564,92 @@ export default function DepartmentDashboard() {
           {consumption && consumption.light.prevReading !== null ? (
             <div className="space-y-1 text-sm">
               <div className="flex justify-between">
-                <span className="text-[13px] text-on-surface-muted">Consumo</span>
-                <span className="font-medium text-on-surface">{consumption.light.consumption} u</span>
+                <span className="text-[13px] text-on-surface-muted">
+                  Consumo
+                </span>
+                <span className="font-medium text-on-surface">
+                  {consumption.light.consumption} u
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[13px] text-on-surface-muted">Costo</span>
-                <span className="font-medium text-emerald-600 dark:text-emerald-400">S/ {consumption.light.cost.toFixed(2)}</span>
+                <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                  S/ {consumption.light.cost.toFixed(2)}
+                </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[13px] text-on-surface-muted">Ultima lectura</span>
-                <span className="font-medium text-on-surface">{consumption.light.lastReading}</span>
+                <span className="text-[13px] text-on-surface-muted">
+                  Ultima lectura
+                </span>
+                <span className="font-medium text-on-surface">
+                  {consumption.light.lastReading}
+                </span>
               </div>
             </div>
           ) : (
-            <p className="text-[13px] text-on-surface-faint">Sin lecturas suficientes</p>
+            <p className="text-[13px] text-on-surface-faint">
+              Sin lecturas suficientes
+            </p>
           )}
         </div>
 
-        {/* Water */}
         <div className="bg-surface rounded-2xl border border-border p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/40 ring-1 ring-blue-100 dark:ring-blue-800/40 flex items-center justify-center">
-              <Droplets size={18} className="text-blue-600 dark:text-blue-400" />
+              <Droplets
+                size={18}
+                className="text-blue-600 dark:text-blue-400"
+              />
             </div>
             <h3 className="font-semibold text-on-surface">Agua</h3>
           </div>
           {consumption && consumption.water.prevReading !== null ? (
             <div className="space-y-1 text-sm">
               <div className="flex justify-between">
-                <span className="text-[13px] text-on-surface-muted">Consumo</span>
-                <span className="font-medium text-on-surface">{consumption.water.consumption} u</span>
+                <span className="text-[13px] text-on-surface-muted">
+                  Consumo
+                </span>
+                <span className="font-medium text-on-surface">
+                  {consumption.water.consumption} u
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[13px] text-on-surface-muted">Costo</span>
-                <span className="font-medium text-emerald-600 dark:text-emerald-400">S/ {consumption.water.cost.toFixed(2)}</span>
+                <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                  S/ {consumption.water.cost.toFixed(2)}
+                </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[13px] text-on-surface-muted">Ultima lectura</span>
-                <span className="font-medium text-on-surface">{consumption.water.lastReading}</span>
+                <span className="text-[13px] text-on-surface-muted">
+                  Ultima lectura
+                </span>
+                <span className="font-medium text-on-surface">
+                  {consumption.water.lastReading}
+                </span>
               </div>
             </div>
           ) : (
-            <p className="text-[13px] text-on-surface-faint">Sin lecturas suficientes</p>
+            <p className="text-[13px] text-on-surface-faint">
+              Sin lecturas suficientes
+            </p>
           )}
         </div>
       </div>
 
       {!lightMeter && !waterMeter && (
         <div className="mb-8">
-          <EmptyState icon={DoorOpen} title="Sin medidores" description="Este departamento no tiene medidores asignados." />
+          <EmptyState
+            icon={DoorOpen}
+            title="Sin medidores"
+            description="Este departamento no tiene medidores asignados."
+          />
         </div>
       )}
 
-      {/* Reading History */}
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-on-surface-strong">Historial de Lecturas</h2>
+        <h2 className="text-lg font-semibold text-on-surface-strong">
+          Historial de Lecturas
+        </h2>
         <button
           type="button"
           onClick={() => setHistoryOpen((prev) => !prev)}
@@ -562,37 +658,49 @@ export default function DepartmentDashboard() {
           {historyOpen ? 'Ocultar historial' : 'Ver historial'}
         </button>
       </div>
-      {historyOpen && (
-        historyLoading ? (
+      {historyOpen &&
+        (historyLoading ? (
           <div className="mb-8">
-            <Spinner />
+            <TableSkeleton rows={6} cols={3} />
           </div>
         ) : monthlyReadings.length === 0 ? (
           <div className="mb-8">
-            <EmptyState icon={DoorOpen} title="Sin lecturas" description="No hay lecturas registradas para este departamento." />
+            <EmptyState
+              icon={DoorOpen}
+              title="Sin lecturas"
+              description="No hay lecturas registradas para este departamento."
+            />
           </div>
         ) : (
-          <div className="mb-8 bg-surface rounded-2xl border border-border overflow-hidden shadow-sm">
+          <div className={`mb-8 ${tableContainerCls}`}>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border-light bg-surface-alt/80">
-                  <th className="text-left px-5 py-3 text-[13px] font-semibold text-on-surface-medium uppercase tracking-wider">Mes</th>
-                  <th className="text-right px-5 py-3 text-[13px] font-semibold text-on-surface-medium uppercase tracking-wider">Luz</th>
-                  <th className="text-right px-5 py-3 text-[13px] font-semibold text-on-surface-medium uppercase tracking-wider">Agua</th>
+                <tr className={tableHeaderCls}>
+                  <th className={tableHeaderCellCls}>Mes</th>
+                  <th className="text-right px-4 md:px-5 py-3 text-[13px] font-semibold text-on-surface-medium uppercase tracking-wider whitespace-nowrap">
+                    Luz
+                  </th>
+                  <th className="text-right px-4 md:px-5 py-3 text-[13px] font-semibold text-on-surface-medium uppercase tracking-wider whitespace-nowrap">
+                    Agua
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {monthlyReadings.map((row) => (
-                  <tr key={row.key} className="border-b border-border-light last:border-0 hover:bg-surface-alt/50 transition-colors">
-                    <td className="px-5 py-3.5 text-on-surface-medium">
-                      {monthNames[row.month]} {row.year}
+                  <tr key={row.key} className={tableRowCls}>
+                    <td className={`${tableCellCls} text-on-surface-medium`}>
+                      {row.label}
                     </td>
-                    <td className="px-5 py-3.5 text-right">
+                    <td className={`${tableCellCls} text-right`}>
                       {row.light !== null ? (
                         <span className="inline-flex items-center justify-end gap-2">
-                          <span className="font-semibold text-on-surface">{row.light}</span>
+                          <span className="font-semibold text-on-surface">
+                            {row.light}
+                          </span>
                           <button
-                            onClick={() => openEdit(row.lightId!, row.light!, row.lightDate!)}
+                            onClick={() =>
+                              openEdit(row.lightId!, row.light!, row.lightDate!)
+                            }
                             className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-surface-raised hover:bg-surface-alt text-on-surface-medium hover:text-on-surface-strong transition-colors"
                             title="Editar lectura de luz"
                           >
@@ -601,20 +709,28 @@ export default function DepartmentDashboard() {
                         </span>
                       ) : lightMeter ? (
                         <button
-                          onClick={() => openAddMissing('light', row.month, row.year)}
+                          onClick={() =>
+                            openAddMissing('light', row.month, row.year)
+                          }
                           className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-surface-raised hover:bg-surface-alt text-on-surface-medium hover:text-on-surface-strong transition-colors"
                           title="Agregar lectura de luz"
                         >
                           <Plus size={11} />
                         </button>
-                      ) : '-'}
+                      ) : (
+                        '-'
+                      )}
                     </td>
-                    <td className="px-5 py-3.5 text-right">
+                    <td className={`${tableCellCls} text-right`}>
                       {row.water !== null ? (
                         <span className="inline-flex items-center justify-end gap-2">
-                          <span className="font-semibold text-on-surface">{row.water}</span>
+                          <span className="font-semibold text-on-surface">
+                            {row.water}
+                          </span>
                           <button
-                            onClick={() => openEdit(row.waterId!, row.water!, row.waterDate!)}
+                            onClick={() =>
+                              openEdit(row.waterId!, row.water!, row.waterDate!)
+                            }
                             className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-surface-raised hover:bg-surface-alt text-on-surface-medium hover:text-on-surface-strong transition-colors"
                             title="Editar lectura de agua"
                           >
@@ -623,30 +739,41 @@ export default function DepartmentDashboard() {
                         </span>
                       ) : waterMeter ? (
                         <button
-                          onClick={() => openAddMissing('water', row.month, row.year)}
+                          onClick={() =>
+                            openAddMissing('water', row.month, row.year)
+                          }
                           className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-surface-raised hover:bg-surface-alt text-on-surface-medium hover:text-on-surface-strong transition-colors"
                           title="Agregar lectura de agua"
                         >
                           <Plus size={11} />
                         </button>
-                      ) : '-'}
+                      ) : (
+                        '-'
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )
-      )}
+        ))}
 
-      <Modal isOpen={readingModalOpen} onClose={() => setReadingModalOpen(false)} title="Registrar Lecturas">
+      <Modal
+        isOpen={readingModalOpen}
+        onClose={() => setReadingModalOpen(false)}
+        title="Registrar Lecturas"
+      >
         <form onSubmit={submitReadings} className="space-y-4">
           <div>
             <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
               <Calendar size={12} className="inline mr-1" />
               Fecha
             </label>
-            <DatePicker value={readingDate} onChange={setReadingDate} required />
+            <DatePicker
+              value={readingDate}
+              onChange={setReadingDate}
+              required
+            />
           </div>
 
           {lightMeter && (
@@ -654,7 +781,9 @@ export default function DepartmentDashboard() {
               <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5 flex items-center gap-1.5">
                 <Zap size={13} className="text-amber-500" /> Luz
                 {lightLastReading !== null && (
-                  <span className="font-normal text-on-surface-muted">— anterior: {lightLastReading}</span>
+                  <span className="font-normal text-on-surface-muted">
+                    — anterior: {lightLastReading}
+                  </span>
                 )}
               </label>
               <input
@@ -665,7 +794,11 @@ export default function DepartmentDashboard() {
                 placeholder="Nueva lectura"
                 className={inputCls}
               />
-              {lightError && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{lightError}</p>}
+              {lightError && (
+                <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                  {lightError}
+                </p>
+              )}
             </div>
           )}
 
@@ -674,7 +807,9 @@ export default function DepartmentDashboard() {
               <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5 flex items-center gap-1.5">
                 <Droplets size={13} className="text-blue-500" /> Agua
                 {waterLastReading !== null && (
-                  <span className="font-normal text-on-surface-muted">— anterior: {waterLastReading}</span>
+                  <span className="font-normal text-on-surface-muted">
+                    — anterior: {waterLastReading}
+                  </span>
                 )}
               </label>
               <input
@@ -685,13 +820,22 @@ export default function DepartmentDashboard() {
                 placeholder="Nueva lectura"
                 className={inputCls}
               />
-              {waterError && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{waterError}</p>}
+              {waterError && (
+                <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                  {waterError}
+                </p>
+              )}
             </div>
           )}
 
           <button
             type="submit"
-            disabled={submitting || !!lightError || !!waterError || (!lightValue && !waterValue)}
+            disabled={
+              submitting ||
+              !!lightError ||
+              !!waterError ||
+              (!lightValue && !waterValue)
+            }
             className={btnCls}
           >
             {submitting ? 'Guardando...' : 'Registrar Lecturas'}
@@ -702,17 +846,30 @@ export default function DepartmentDashboard() {
       <Modal
         isOpen={!!addMissing}
         onClose={() => setAddMissing(null)}
-        title={addMissing?.type === 'light' ? 'Agregar Lectura de Luz' : 'Agregar Lectura de Agua'}
+        title={
+          addMissing?.type === 'light'
+            ? 'Agregar Lectura de Luz'
+            : 'Agregar Lectura de Agua'
+        }
       >
         <form onSubmit={handleAddMissingSubmit} className="space-y-4">
           <div className="flex items-center gap-2 text-[13px] text-on-surface-muted">
-            {addMissing?.type === 'light'
-              ? <><Zap size={13} className="text-amber-500" /> Lectura anterior: {lightLastReading ?? 'N/A'}</>
-              : <><Droplets size={13} className="text-blue-500" /> Lectura anterior: {waterLastReading ?? 'N/A'}</>
-            }
+            {addMissing?.type === 'light' ? (
+              <>
+                <Zap size={13} className="text-amber-500" /> Lectura anterior:{' '}
+                {lightLastReading ?? 'N/A'}
+              </>
+            ) : (
+              <>
+                <Droplets size={13} className="text-blue-500" /> Lectura
+                anterior: {waterLastReading ?? 'N/A'}
+              </>
+            )}
           </div>
           <div>
-            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Valor</label>
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+              Valor
+            </label>
             <input
               type="number"
               step="any"
@@ -728,18 +885,32 @@ export default function DepartmentDashboard() {
               <Calendar size={12} className="inline mr-1" />
               Fecha
             </label>
-            <DatePicker value={addMissingDate} onChange={setAddMissingDate} required />
+            <DatePicker
+              value={addMissingDate}
+              onChange={setAddMissingDate}
+              required
+            />
           </div>
-          <button type="submit" disabled={addMissingSubmitting || !addMissingValue} className={btnCls}>
+          <button
+            type="submit"
+            disabled={addMissingSubmitting || !addMissingValue}
+            className={btnCls}
+          >
             {addMissingSubmitting ? 'Guardando...' : 'Guardar Lectura'}
           </button>
         </form>
       </Modal>
 
-      <Modal isOpen={!!editingId} onClose={() => setEditingId(null)} title="Editar Lectura">
+      <Modal
+        isOpen={!!editingId}
+        onClose={() => setEditingId(null)}
+        title="Editar Lectura"
+      >
         <form onSubmit={handleEditSubmit} className="space-y-4">
           <div>
-            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">Valor</label>
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+              Valor
+            </label>
             <input
               type="number"
               step="any"

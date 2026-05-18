@@ -8,12 +8,12 @@ export class Tenant {
   @Column()
   name: string;
 
-  @Column({ unique: true })
-  email: string;
+  @Column({ type: 'varchar', unique: true, nullable: true })
+  email: string | null;
 
-  @Column({ nullable: true })
+  @Column()
   phone: string;
 
-  @Column({ nullable: true })
+  @Column({ unique: true })
   documentId: string;
 }
