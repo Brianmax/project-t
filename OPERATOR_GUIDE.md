@@ -111,15 +111,12 @@ The operator never has to manually compute anything. Once readings and payments 
 | **Consumo** | How much the tenant used = current reading − previous reading. | "300 kWh this month". |
 | **Recibo** | The monthly bill: rent + water + light + extras − payments = balance. | "April receipt for Depto 201". |
 | **Cargo extra** | Any one-off line item: cable, cleaning, repairs. | "Limpieza: S/ 50". |
-| **Mora** | Auto-generated late-payment penalty. | "5 days × S/ 5 = S/ 25". |
 | **Pago** | Money received from the tenant. | "Tenant paid S/ 1000 on April 5". |
 | **Liquidación** | Read-only forecast of "what does the tenant owe / how much do we refund" at checkout. | — |
 | **Terminación** | The final, persisted closure of a contract. | — |
-| **Pendiente de revisión** | Receipt status: issued but not yet operator-approved. | — |
-| **Aprobado / Denegado** | Receipt status after the operator confirms the figures. | — |
+| **No pagado / Pagado** | Receipt status. `No pagado` is the default on creation. `Pagado` is set manually by the operator and is terminal (cannot be regenerated or reverted in this version — see [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5)). | — |
 | **Indicar salida anticipada** | UI toggle to declare a mid-month departure on the billing page. | — |
 | **Prorratear alquiler** | Checkbox that scales the rent by `daysOccupied / daysInMonth`. | — |
-| **Generar Mora** | Button that creates the auto late fee. | — |
 
 ---
 
@@ -521,27 +518,17 @@ The mid-month math is detailed in [G.15](#g15-worked-example-proration-math).
 >
 > _✅ DONE: Make sure to provide a clear UI/UX that shows how the credits are being applied to cover all charges._ — The `Resumen` panel displays the math explicitly: `+ Créditos`, `− Facturado`, then the net result labeled either `A devolver al inquilino` (positive, emerald) or `Saldo a cobrar al inquilino` (negative, red). Per-line breakdowns in the Créditos and Facturado panels show which components are being applied (advance, guarantee, payments, prorated refund vs. rent, services, extras, mora).
 
-### G.7 The Mora (Late Fee) Generator
+### G.7 The Mora (Late Fee) Generator — REMOVED
 
-A small inline section that appears **only** when the system detects an overdue unpaid receipt for this department's current contract.
+The auto mora generator was removed in Phase 05. The previous rule (day-15 calendar gate × `ratePerDay`) was never validated against business policy and was tangled with the deprecated `pending_review` / `approved` status machine.
 
-**Detection logic (computed live in the frontend, on every render):**
-1. `receipt` exists and `receipt.balance < 0` (tenant still owes money).
-2. Today's date is past `new Date(receipt.year, receipt.month, 15)` — i.e. past day 15 of the **next** month after the billing month.
-3. No `late_fee`-type extra charge already exists for this `(month, year)` (avoid showing the option once a fee is already in place).
+Reintroduction (with stakeholder-confirmed rules) is tracked in [TEN-6](https://linear.app/tenant-aqp/issue/TEN-6).
 
-If all three are true, a card is rendered with:
-
-- A **tarifa diaria** numeric input (default `5.00`).
-- A **Generar Mora** button.
-
-Clicking the button calls `POST /extra-charges/late-fee` with `{ contractId, month, year, ratePerDay }` and the backend then runs the algorithm from [G.17](#g17-worked-example-late-fee-grace-period).
-
-**Constraint:** the **same** detection logic is duplicated on the backend. If the frontend hides the button because the receipt's balance is positive, but the backend balance differs (because the receipt was generated before the latest payment), clicking would still be blocked with the message *"Receipt for M/Y has a positive balance"*.
+Historical `late_fee` extra-charge rows continue to display correctly on the billing page; only the generator UI and backend endpoint are gone.
 
 > **📝 Adjustments / Notes**
 >
-> _TODO: capture proposed changes here._
+> _✅ DONE: Mora generator removed in Phase 05 (see TEN-6 for future reintroduction)._
 
 ### G.8 The Preview Pane
 
@@ -572,11 +559,10 @@ The main call to action.
 ```
 POST /contracts/{contractId}/receipts?month={M}&year={Y}
    [&startDay=1&endDay={departureDay}&prorateRent=true]
-   [&force=true]
 ```
 
 - `startDay` is hardcoded to `1` on the frontend; only `endDay` and `prorateRent` come from the operator.
-- `force=true` is added automatically if the operator is regenerating a receipt whose current status is `pending_review`. (Approved receipts also need force; see G.12.)
+- There is no `force` flag any more. Regeneration is allowed for any `unpaid` receipt; clicking on a `paid` row is server-side rejected with `409 RECEIPT_LOCKED` (and the button is disabled in the UI before that point).
 
 **What the backend does:**
 
@@ -588,38 +574,33 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     FE->>API: POST /contracts/:id/receipts?...
-    API->>R: issueReceipt(contractId, month, year, sDay, eDay, prorate, force)
-    R->>DB: load contract (with tenant, department, property)
-    R->>DB: SELECT payments WHERE contractId AND date BETWEEN periodStart AND periodEnd
-    R->>R: consumption(LIGHT, month, year, sDay?, eDay?)
-    R->>R: consumption(WATER, month, year, sDay?, eDay?)
-    R->>DB: SELECT extra_charges WHERE contractId, month, year
-    R->>R: build items[] (rent, light, water, extras, payments)
-    R->>R: totals: totalDue, totalPayments, balance = totalPayments − totalDue
+    API->>R: issueReceipt(contractId, month, year, sDay, eDay, prorate)
     R->>DB: SELECT existing receipt by (contractId, month, year)
-    alt existing approved + !force
-        R-->>FE: 400 "Receipt already approved, use force=true"
-    else existing
-        R->>DB: UPDATE receipt, reset status to PENDING_REVIEW
-    else
-        R->>DB: INSERT receipt, status=PENDING_REVIEW
+    alt existing.status == paid
+        R-->>FE: 409 RECEIPT_LOCKED "Receipt for M/Y is paid and cannot be regenerated"
+    else existing.status == unpaid
+        R->>R: recalc items, totals
+        R->>DB: UPDATE receipt (status stays unpaid)
+    else no row yet
+        R->>R: recalc items, totals
+        R->>DB: INSERT receipt, status=UNPAID
     end
     R-->>FE: Receipt JSON
     FE->>FE: open receipt modal (G.10)
 ```
 
-**Result:** the receipt is now persisted with status **`pending_review`**.
+**Result:** the receipt is persisted with status **`unpaid`** (new) or stays **`unpaid`** (regen of existing unpaid row).
 
 **Toast on success:** *"Recibo generado exitosamente"*.
 
 **Failure modes:**
-- Approved without force → 400 with the explicit message above.
+- Targeting a paid period → 409 `RECEIPT_LOCKED`. The UI hides the button before that point, so this is defense-in-depth.
 - Network error → toast: *"Error al generar recibo (details)"*.
 - Race condition (two operators clicking at once) → the second click upserts the same row; the unique constraint `(contractId, month, year)` keeps things consistent.
 
 > **📝 Adjustments / Notes**
 >
-> _TODO: capture proposed changes here._
+> _✅ DONE: Phase 05 — dropped the `force` flag; paid receipts are now terminal._
 
 ### G.10 The Receipt Modal
 
@@ -629,92 +610,72 @@ The status pill colors:
 
 | Status | Pill text | Color |
 | :-- | :-- | :-- |
-| `pending_review` | Pendiente de revisión | amber |
-| `approved` | Aprobado | emerald |
-| `denied` | Denegado | red |
+| `unpaid` | No pagado | amber |
+| `paid` | Pagado | emerald |
+
+When the receipt is `paid`, a sub-line beneath the pill shows `Pagado el <fecha> por <user-id-short>` (provenance from the `paidAt` / `paidBy` columns).
 
 The modal includes action buttons depending on status (see G.11) and a "Enviar por WhatsApp" placeholder button that currently shows an alert ("WhatsApp sending will be implemented in next phase") — it does not send anything.
 
 > **📝 Adjustments / Notes**
 >
-> _TODO: capture proposed changes here._
+> _✅ DONE: Phase 05 collapsed the 3-state pill to 2 states; added paid-provenance line._
 
-### G.11 The "Aprobar" and "Denegar" Actions
+### G.11 The "Marcar como pagado" Action
 
-Both buttons are visible in the receipt modal while status is `pending_review`.
+Visible in the receipt modal **only** while status is `unpaid`.
 
 | Button | API call | What it sets |
 | :-- | :-- | :-- |
-| **Aprobar** | `PATCH /contracts/:id/receipts/status?month&year` with `{ status: "approved" }` | `status = approved`. |
-| **Denegar** | Same endpoint with `{ status: "denied" }` | `status = denied`. |
+| **Marcar como pagado** | `PATCH /contracts/:id/receipts/status?month&year` with `{ status: "paid" }` | `status = paid`, `paidAt = now()`, `paidBy = <current user>`. |
 
-Both calls go through `ReceiptService.updateReceiptStatus`. The receipt's `items[]`, `totalDue`, `totalPayments`, and `balance` are **not** recomputed — only the `status` field changes.
+The call goes through `ReceiptService.updateReceiptStatus`. The receipt's `items[]`, `totalDue`, `totalPayments`, and `balance` are **not** recomputed — only `status`, `paidAt`, and `paidBy` change.
 
-**Toasts:**
-- Aprobado: *"Recibo aprobado exitosamente"*.
-- Denegado: *"Recibo denegado"*.
+**Toast:** *"Recibo marcado como pagado"*.
 
-**Constraint:** once **Aprobado**, the next click on Generar Recibo will be blocked unless the frontend passes `force=true`. The UI currently sends `force=true` automatically only when status is `pending_review`. **There is a known gap here:** if the operator wants to regenerate an already-`approved` receipt from the modal, they must close and reopen via the Generar Recibo button (which the UI then routes through force-flow). See G.12 for the full picture.
+**`paid` is terminal in this version.** There is no Revertir button. The endpoint refuses any `paid → unpaid` flip with `409 RECEIPT_PAID_IMMUTABLE`. Reintroduction of a revert path (with conditions like supervisor role or time-window) is tracked in [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5).
 
 > **📝 Adjustments / Notes**
 >
-> _TODO: capture proposed changes here._
+> _✅ DONE: Phase 05 — replaced Aprobar/Denegar with single-button Marcar como pagado; flip is audited via paidAt + paidBy._
 
 ### G.12 Regenerating a Receipt
 
 "Regenerating" means asking the backend to recompute from current data and overwrite the existing receipt row.
 
-When you click Generar Recibo and a receipt already exists for the period, the backend behaves as follows:
+When you click Generar Recibo and a receipt already exists for the period:
 
-| Existing status | `force` query param | Result |
-| :-- | :-- | :-- |
-| `pending_review` | (any) | Always upserts. Status stays `pending_review`. |
-| `denied` | (any) | Upserts. Status flips back to `pending_review`. |
-| `approved` | absent / false | **400 Bad Request**: *"Receipt for M/Y is already approved. Use force=true to regenerate."* |
-| `approved` | `true` | Upserts and resets status to `pending_review`. |
+| Existing status | Result |
+| :-- | :-- |
+| `unpaid` | Always upserts. Status stays `unpaid`. Idempotent — click as many times as you want; the receipt picks up the latest readings / extra charges / payments. |
+| `paid` | **409 `RECEIPT_LOCKED`**: *"Receipt for M/Y is paid and cannot be regenerated."* The UI also disables the Regenerar Recibo button in this case with hover tooltip *"Recibo pagado — no se puede regenerar"*. |
 
-The frontend logic that decides whether to add `force=true`:
-
-```text
-if receipt.status == 'pending_review':
-    params.set('force', 'true')
-```
-
-**This is a current implementation gap** that the operator should understand: if a receipt is `approved` and the operator wants to regenerate (e.g. because a payment was added), the frontend will **not** auto-set `force=true` on the next Generar Recibo click. The first click receives 400. To work around it the operator can:
-
-1. Click **Denegar** to change status to `denied`.
-2. Click **Generar Recibo** — now the backend allows the upsert.
-
-(After step 2 the status is `pending_review` again and the new figures are visible.)
+There is no `force` flag any more. There is no Denegar → Regenerar workaround. The flow is: as long as the receipt is `unpaid`, click Generar Recibo to refresh.
 
 > **📝 Adjustments / Notes**
 >
-> _TODO: capture proposed changes here._
+> _✅ DONE: Phase 05 — dropped the `force` flag and the Denegar → Regenerar dance._
 
 ### G.13 Receipt Status Machine
 
 ```mermaid
 stateDiagram-v2
-    [*] --> pending_review: issueReceipt
-    pending_review --> approved: PATCH ...status approved
-    pending_review --> denied: PATCH ...status denied
-    pending_review --> pending_review: re-issue with current data
-    denied --> pending_review: re-issue (no force needed)
-    approved --> pending_review: re-issue with force=true
-    approved --> denied: PATCH ...status denied (allowed)
-    approved --> [*]: terminal "delivered to tenant"
-    denied --> [*]: terminal "abandoned"
+    [*] --> unpaid: issueReceipt
+    unpaid --> unpaid: Generar Recibo (refresh items)
+    unpaid --> paid: Marcar como pagado
+    paid --> [*]: terminal in this version
 ```
 
 Key rules:
-- A receipt is **always created** with status `pending_review`.
-- Status updates do **not** touch line items; only the `status` column changes.
+- A receipt is **always created** with status `unpaid`.
+- `unpaid → unpaid` regeneration refreshes `items[]` and totals.
+- `unpaid → paid` is a one-way door in this phase. Writes `paidAt` and `paidBy` audit columns. See [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5) for the planned revert flow.
+- `paid` rows are locked: regeneration is blocked at both the UI and the server (`409 RECEIPT_LOCKED`).
 - The unique constraint `(contractId, month, year)` ensures one row per period.
-- There is no built-in audit trail of who changed status or when. Only `createdAt` and `updatedAt` are tracked on the row.
 
 > **📝 Adjustments / Notes**
 >
-> _TODO: capture proposed changes here._
+> _✅ DONE: Phase 05 — 3-state machine collapsed to 2 states with paid as terminal._
 
 ### G.14 Receipt Anatomy — Field by Field
 
@@ -728,7 +689,9 @@ When you fetch `GET /contracts/:id/receipts?month&year` you receive an object wi
 | `year` | int | Query param | Billing year. |
 | `startDay` | int or null | Query param, persisted | First day of the partial period if a prorated receipt; otherwise null. |
 | `endDay` | int or null | Query param, persisted | Last day of the partial period; otherwise null. |
-| `status` | enum | Persisted; default `pending_review` | One of `pending_review`, `approved`, `denied`. |
+| `status` | enum | Persisted; default `unpaid` | One of `unpaid`, `paid`. `paid` is terminal in this version (no revert; see [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5)). |
+| `paidAt` | timestamptz or null | Set when status flips to `paid` | Audit column. |
+| `paidBy` | uuid or null | Set when status flips to `paid` — value is the user ID of the operator who clicked the button | Audit column. |
 | `tenantName` | string | Snapshotted from `contract.tenant.name` at issue time | Frozen — does **not** update if you later rename the tenant. |
 | `departmentName` | string | Snapshotted from `contract.department.name` | Frozen. |
 | `propertyAddress` | string | Snapshotted from `contract.department.property.address` | Frozen. |
@@ -940,21 +903,13 @@ The system computes `consumption = 150 − 4820 = −4670`. This is impossible i
 >
 > _TODO: capture proposed changes here._
 
-### I.2 Auto Late Fees
+### I.2 Auto Late Fees — REMOVED
 
-Covered in [G.7](#g7-the-mora-late-fee-generator) and [G.17](#g17-worked-example-late-fee-grace-period). Quick recap:
-
-| Aspect | Rule |
-| :-- | :-- |
-| When the button appears | `balance < 0` AND past `Day 15 of month after billing month` AND no existing late fee row |
-| Math | `daysOverdue × ratePerDay` |
-| Default rate | `S/ 5.00 / day` |
-| Idempotency | Re-running updates the existing row by `(contractId, sourceReceiptId, type=LATE_FEE)`. |
-| Deletion | Cannot be deleted via the API — the operator must accept it or zero out the receipt balance and abandon. |
+Removed in Phase 05. See [G.7](#g7-the-mora-late-fee-generator--removed). Reintroduction tracked in [TEN-6](https://linear.app/tenant-aqp/issue/TEN-6).
 
 > **📝 Adjustments / Notes**
 >
-> _TODO: capture proposed changes here._
+> _✅ DONE: Mora removed; legacy `late_fee` rows still display correctly._
 
 ---
 
@@ -1065,7 +1020,7 @@ After termination:
 - The department's `isAvailable` is `true` — ready for a new contract.
 - The termination snapshot is **immutable**. There is no "undo".
 
-**Receipt-completeness gate:** `Confirmar cierre de contrato` is disabled until every billing month from `contract.startDate` through the currently selected month has a persisted receipt (any status — `pending_review`, `approved`, or `denied` all count), **except the earliest month with readings**, which is treated as a baseline/setup period and does not require a receipt (its single reading is the baseline for the next month's consumption). If receipts are missing, the button shows an inline notice listing the missing months (e.g. `Faltan recibos: Mar 2026, Abr 2026`). Backed by `GET /contracts/:id/receipts/months` + `GET /departments/:id/meter-readings/earliest-billing-period`. The list re-checks live after each Generar Recibo, so the button re-enables in the same session.
+**Receipt-completeness gate:** `Confirmar cierre de contrato` is disabled until every billing month from `contract.startDate` through the currently selected month has a persisted receipt (any status — `unpaid` or `paid` both count), **except the earliest month with readings**, which is treated as a baseline/setup period and does not require a receipt (its single reading is the baseline for the next month's consumption). If receipts are missing, the button shows an inline notice listing the missing months (e.g. `Faltan recibos: Mar 2026, Abr 2026`). Backed by `GET /contracts/:id/receipts/months` + `GET /departments/:id/meter-readings/earliest-billing-period`. The list re-checks live after each Generar Recibo, so the button re-enables in the same session.
 
 > **📝 Adjustments / Notes**
 >
@@ -1131,8 +1086,11 @@ Whenever someone registers via **Regístrate**, their account is created with st
 **Q: I just took a meter reading on the 1st of the month, but the receipt says it's "March consumption" when I expected April. Why?**
 A: A reading on day 1 is automatically attributed to the **previous** month, because by the time someone reads the meter on May 1 they're capturing what was consumed during April. If you actually want it billed against May, set "Mes/año de facturación" explicitly in the form. See G.16.
 
-**Q: I added a new payment after approving the receipt. It's not showing on the receipt — what do I do?**
-A: Click **Denegar** then **Generar Recibo** (the frontend does not auto-set `force=true` on approved receipts). Receipts are snapshots, not live views. See G.12.
+**Q: I added a new payment after marking the receipt as paid. It's not showing on the receipt — what do I do?**
+A: Paid receipts are terminal in this version. The "Regenerar Recibo" button is disabled for them and the server returns `409 RECEIPT_LOCKED` if you bypass the UI. If the payment really should be on this receipt, you cannot edit it in-place. The future revert flow is tracked in [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5).
+
+**Q: Why can't I edit a paid receipt?**
+A: By design — `paid` is treated as terminal so the receipt represents what was actually settled. Future work (see [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5)) will add a controlled revert path.
 
 **Q: My tenant overpaid by S/ 200. How do I refund?**
 A: There are two options:
@@ -1140,16 +1098,13 @@ A: There are two options:
   - **Cash refund now:** record a `Pago` with `tipo = refund` for the overpaid amount. The receipt's `totalPayments` drops by that amount (because `balance = totalPayments − totalDue`).
 
 **Q: A tenant gave me a partial payment. How do I record it?**
-A: Just add a `Pago` for the actual amount. The receipt's balance will reflect "tenant still owes the difference". After day 15 of the following month, you can generate Mora on the remainder if you want.
+A: Just add a `Pago` for the actual amount. The receipt's balance will reflect "tenant still owes the difference". (Mora generation was removed in Phase 05 — see [TEN-6](https://linear.app/tenant-aqp/issue/TEN-6).)
 
 **Q: I created a department but forgot to set the initial reading. Can I add it later?**
 A: Yes. Go to **Lecturas → +**, pick the meter (which may not exist yet — you may need to create one via **Medidores** first), enter the historical reading with the historical date. The next reading you add will compute consumption against it.
 
-**Q: I want to charge two different daily late-fee rates to two different tenants. Can I?**
-A: Yes — the rate is per-call. When you click "Generar Mora" you pick the tarifa diaria for that specific receipt. The default in the UI is `S/ 5.00`, but you can override it each time.
-
-**Q: The grace period is 15 days. Can we change it to 5 or 10?**
-A: Not from the UI. The 15-day grace is hardcoded. A developer can change it in the source code, but it affects all contracts globally.
+**Q: Where did the Generar Mora button go?**
+A: Removed in Phase 05. The previous rule was never validated against business policy. Reintroduction with stakeholder-confirmed rules is tracked in [TEN-6](https://linear.app/tenant-aqp/issue/TEN-6).
 
 **Q: Where is the WhatsApp / email sending of receipts?**
 A: Not yet implemented. The "Enviar" button currently shows a placeholder. Future work.

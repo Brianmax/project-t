@@ -11,9 +11,8 @@ import {
 import { Contract } from '../../contract/entities/contract.entity';
 
 export enum ReceiptStatus {
-  PENDING_REVIEW = 'pending_review',
-  APPROVED = 'approved',
-  DENIED = 'denied',
+  UNPAID = 'unpaid',
+  PAID = 'paid',
 }
 
 @Entity()
@@ -68,9 +67,15 @@ export class ReceiptEntity {
   @Column({
     type: 'enum',
     enum: ReceiptStatus,
-    default: ReceiptStatus.PENDING_REVIEW,
+    default: ReceiptStatus.UNPAID,
   })
   status: ReceiptStatus;
+
+  @Column({ name: 'paid_at', type: 'timestamptz', nullable: true })
+  paidAt: Date | null;
+
+  @Column({ name: 'paid_by', type: 'uuid', nullable: true })
+  paidBy: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

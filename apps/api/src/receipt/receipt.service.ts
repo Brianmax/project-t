@@ -1,7 +1,7 @@
 import {
+  ConflictException,
   Injectable,
   NotFoundException,
-  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, Repository } from 'typeorm';
@@ -25,6 +25,8 @@ export interface Receipt {
   startDay?: number | null;
   endDay?: number | null;
   status: ReceiptStatus;
+  paidAt: string | null;
+  paidBy: string | null;
   tenantName: string;
   departmentName: string;
   propertyAddress: string;
@@ -72,7 +74,12 @@ export class ReceiptService {
       endDay,
       prorateRent,
     );
-    return { ...calculated, status: ReceiptStatus.PENDING_REVIEW };
+    return {
+      ...calculated,
+      status: ReceiptStatus.UNPAID,
+      paidAt: null,
+      paidBy: null,
+    };
   }
 
   async issueReceipt(
@@ -82,8 +89,18 @@ export class ReceiptService {
     startDay?: number,
     endDay?: number,
     prorateRent?: boolean,
-    force?: boolean,
   ): Promise<Receipt> {
+    const existing = await this.receiptRepository.findOne({
+      where: { contractId, month, year },
+    });
+
+    if (existing && existing.status === ReceiptStatus.PAID) {
+      throw new ConflictException({
+        code: 'RECEIPT_LOCKED',
+        message: `Receipt for ${month}/${year} is paid and cannot be regenerated.`,
+      });
+    }
+
     // Always recalculate to get the latest extra charges and consumption
     const calculated = await this.calculateReceipt(
       contractId,
@@ -94,18 +111,8 @@ export class ReceiptService {
       prorateRent,
     );
 
-    const existing = await this.receiptRepository.findOne({
-      where: { contractId, month, year },
-    });
-
     if (existing) {
-      if (existing.status === ReceiptStatus.APPROVED && !force) {
-        throw new BadRequestException(
-          `Receipt for ${month}/${year} is already approved. Use force=true to regenerate.`,
-        );
-      }
-      // Update existing receipt with new calculation and reset to draft
-      existing.status = ReceiptStatus.PENDING_REVIEW;
+      // Existing unpaid receipt — refresh fields, keep status UNPAID
       existing.startDay = startDay ?? null;
       existing.endDay = endDay ?? null;
       existing.tenantName = calculated.tenantName;
@@ -120,13 +127,12 @@ export class ReceiptService {
       return this.toReceipt(saved);
     }
 
-    // Create new receipt
     const saved = await this.receiptRepository.save(
       this.receiptRepository.create({
         ...calculated,
         startDay: startDay ?? null,
         endDay: endDay ?? null,
-        status: ReceiptStatus.PENDING_REVIEW,
+        status: ReceiptStatus.UNPAID,
       }),
     );
     return this.toReceipt(saved);
@@ -137,6 +143,7 @@ export class ReceiptService {
     month: number,
     year: number,
     status: ReceiptStatus,
+    actorUserId: string,
   ): Promise<Receipt> {
     const receipt = await this.receiptRepository.findOne({
       where: { contractId, month, year },
@@ -147,7 +154,22 @@ export class ReceiptService {
       );
     }
 
-    receipt.status = status;
+    if (
+      receipt.status === ReceiptStatus.PAID &&
+      status === ReceiptStatus.UNPAID
+    ) {
+      throw new ConflictException({
+        code: 'RECEIPT_PAID_IMMUTABLE',
+        message: 'Paid receipts cannot be reverted to unpaid in this version.',
+      });
+    }
+
+    if (status === ReceiptStatus.PAID && receipt.status !== ReceiptStatus.PAID) {
+      receipt.status = ReceiptStatus.PAID;
+      receipt.paidAt = new Date();
+      receipt.paidBy = actorUserId;
+    }
+
     const saved = await this.receiptRepository.save(receipt);
     return this.toReceipt(saved);
   }
@@ -167,10 +189,10 @@ export class ReceiptService {
     }));
   }
 
-  async findPendingReceipts(): Promise<Receipt[]> {
+  async findUnpaidReceipts(): Promise<Receipt[]> {
     const receipts = await this.receiptRepository.find({
       where: {
-        status: ReceiptStatus.PENDING_REVIEW,
+        status: ReceiptStatus.UNPAID,
       },
       order: {
         year: 'DESC',
@@ -190,6 +212,8 @@ export class ReceiptService {
       startDay: record.startDay,
       endDay: record.endDay,
       status: record.status,
+      paidAt: record.paidAt ? record.paidAt.toISOString() : null,
+      paidBy: record.paidBy,
       tenantName: record.tenantName,
       departmentName: record.departmentName,
       propertyAddress: record.propertyAddress,
@@ -211,7 +235,7 @@ export class ReceiptService {
     startDay?: number,
     endDay?: number,
     prorateRent?: boolean,
-  ): Promise<Omit<Receipt, 'id' | 'status'>> {
+  ): Promise<Omit<Receipt, 'id' | 'status' | 'paidAt' | 'paidBy'>> {
     const contract = await this.contractRepository.findOne({
       where: { id: contractId },
       relations: ['tenant', 'department', 'department.property'],

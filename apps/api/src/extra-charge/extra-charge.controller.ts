@@ -11,7 +11,6 @@ import {
 } from '@nestjs/common';
 import { ExtraChargeService } from './extra-charge.service';
 import { CreateExtraChargeDto } from './dto/create-extra-charge.dto';
-import { GenerateLateFeeDto } from './dto/generate-late-fee.dto';
 
 @Controller('extra-charges')
 export class ExtraChargeController {
@@ -20,11 +19,6 @@ export class ExtraChargeController {
   @Post()
   create(@Body() dto: CreateExtraChargeDto) {
     return this.extraChargeService.create(dto);
-  }
-
-  @Post('late-fee')
-  generateLateFee(@Body() dto: GenerateLateFeeDto) {
-    return this.extraChargeService.generateLateFee(dto);
   }
 
   @Get()

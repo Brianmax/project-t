@@ -8,7 +8,6 @@ import {
   FileText,
   AlertTriangle,
   Check,
-  X as XIcon,
   Send,
   Ban,
 } from 'lucide-react';
@@ -82,7 +81,9 @@ interface GeneratedReceipt {
   contractId: string;
   month: number;
   year: number;
-  status: 'pending_review' | 'approved' | 'denied';
+  status: 'unpaid' | 'paid';
+  paidAt: string | null;
+  paidBy: string | null;
   tenantName: string;
   departmentName: string;
   propertyAddress: string;
@@ -143,8 +144,6 @@ export default function DepartmentBilling() {
 
   const [chargeDesc, setChargeDesc] = useState('');
   const [chargeAmount, setChargeAmount] = useState('');
-  const [lateFeeRate, setLateFeeRate] = useState('5.00');
-  const [lateFeeLoading, setLateFeeLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const [receiptModal, setReceiptModal] = useState(false);
@@ -153,36 +152,63 @@ export default function DepartmentBilling() {
     null,
   );
   const [receiptLoading, setReceiptLoading] = useState(false);
-  const [approvingReceipt, setApprovingReceipt] = useState(false);
+  const [markingPaid, setMarkingPaid] = useState(false);
   const receiptStatusLabel: Record<GeneratedReceipt['status'], string> = {
-    pending_review: 'Pendiente de revision',
-    approved: 'Aprobado',
-    denied: 'Denegado',
+    unpaid: 'No pagado',
+    paid: 'Pagado',
   };
   const receiptStatusClass: Record<GeneratedReceipt['status'], string> = {
-    pending_review:
+    unpaid:
       'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200/50 dark:ring-amber-700/40',
-    approved:
-      'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200/50 dark:ring-emerald-700/40',
-    denied:
-      'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 ring-1 ring-red-200/50 dark:ring-red-700/40',
+    paid: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200/50 dark:ring-emerald-700/40',
   };
+
+  const getContractStartDayForPeriod = useCallback(
+    (selectedContract: Contract | null) => {
+      if (!selectedContract) return null;
+      const startDate = new Date(
+        `${selectedContract.startDate.slice(0, 10)}T12:00:00`,
+      );
+      if (
+        startDate.getFullYear() === year &&
+        startDate.getMonth() + 1 === month &&
+        startDate.getDate() > 1
+      ) {
+        return startDate.getDate();
+      }
+      return null;
+    },
+    [month, year],
+  );
+
+  const buildBillingParams = useCallback(
+    (selectedContract: Contract | null) => {
+      const params = new URLSearchParams({
+        month: String(month),
+        year: String(year),
+      });
+      const startDay = getContractStartDayForPeriod(selectedContract);
+      if (departureDay) {
+        params.set('startDay', String(startDay ?? 1));
+        params.set('endDay', departureDay);
+        params.set('prorateRent', 'true');
+      } else if (startDay) {
+        params.set('startDay', String(startDay));
+      }
+      return params;
+    },
+    [departureDay, getContractStartDayForPeriod, month, year],
+  );
 
   const fetchData = useCallback(async () => {
     setReceipt(null);
     setPreviewReceipt(null);
 
     try {
-      const [dept, contracts, cons, latestReading, earliestBilling] =
+      const [dept, contracts, latestReading, earliestBilling] =
         await Promise.all([
           apiFetch<Department>(`/departments/${departmentId}`),
           apiFetch<Contract[]>(`/contracts?departmentId=${departmentId}`),
-          apiFetch<{
-            light: { consumption: number; cost: number };
-            water: { consumption: number; cost: number };
-          }>(
-            `/departments/${departmentId}/consumption/period?month=${month}&year=${year}`,
-          ).catch(() => null),
           apiFetch<{ date: string | null }>(
             `/departments/${departmentId}/meter-readings/latest`,
           ).catch(() => ({ date: null })),
@@ -194,6 +220,27 @@ export default function DepartmentBilling() {
       setDepartment(dept);
       setLastReadingDate(latestReading?.date ?? null);
       setBaselineMonth(earliestBilling ?? null);
+
+      const today = new Date().toISOString().slice(0, 10);
+      const activeContract =
+        contracts
+          .filter(
+            (c) =>
+              c.status === 'active' &&
+              c.endDate.slice(0, 10) >= today &&
+              c.tenant,
+          )
+          .sort((a, b) => b.startDate.localeCompare(a.startDate))[0] ?? null;
+      setContract(activeContract);
+
+      const periodParams = buildBillingParams(activeContract);
+      const cons = await apiFetch<{
+        light: { consumption: number; cost: number };
+        water: { consumption: number; cost: number };
+      }>(
+        `/departments/${departmentId}/consumption/period?${periodParams}`,
+      ).catch(() => null);
+
       setConsumption(
         cons
           ? {
@@ -213,9 +260,6 @@ export default function DepartmentBilling() {
           : null,
       );
 
-      const activeContract = contracts[0] ?? null;
-      setContract(activeContract);
-
       if (activeContract) {
         const [charges, existingTermination, months] = await Promise.all([
           apiFetch<ExtraCharge[]>(
@@ -234,18 +278,15 @@ export default function DepartmentBilling() {
         if (existingTermination) {
           setTermination(existingTermination);
           setShowDeparture(true);
+        } else {
+          setTermination(null);
+          if (!departureDay) {
+            setShowDeparture(false);
+          }
         }
 
         try {
-          const previewParams = new URLSearchParams({
-            month: String(month),
-            year: String(year),
-          });
-          if (departureDay) {
-            previewParams.set('startDay', '1');
-            previewParams.set('endDay', departureDay);
-            previewParams.set('prorateRent', 'true');
-          }
+          const previewParams = buildBillingParams(activeContract);
           const fetchedReceipt = await apiFetch<GeneratedReceipt>(
             `/contracts/${activeContract.id}/receipts?${previewParams}`,
           );
@@ -258,13 +299,15 @@ export default function DepartmentBilling() {
         }
       } else {
         setExtraCharges([]);
+        setTermination(null);
+        setShowDeparture(false);
       }
     } catch {
       showError('No se pudieron cargar los datos de facturacion');
     } finally {
       setLoading(false);
     }
-  }, [departmentId, month, year, departureDay]);
+  }, [buildBillingParams, departmentId]);
 
   useEffect(() => {
     setLoading(true);
@@ -337,45 +380,11 @@ export default function DepartmentBilling() {
     }
   };
 
-  const handleGenerateLateFee = async (
-    targetMonth: number,
-    targetYear: number,
-  ) => {
-    if (!contract) return;
-    setLateFeeLoading(true);
-    try {
-      await apiPost('/extra-charges/late-fee', {
-        contractId: contract.id,
-        month: targetMonth,
-        year: targetYear,
-        ratePerDay: Number(lateFeeRate),
-      });
-      await refreshCharges();
-      showSuccess('Mora generada exitosamente');
-    } catch (err) {
-      const details = err instanceof Error ? ` (${err.message})` : '';
-      showError(`Error al generar mora${details}`);
-    } finally {
-      setLateFeeLoading(false);
-    }
-  };
-
   const handleGenerateReceipt = useCallback(async () => {
     if (!contract) return;
     setReceiptLoading(true);
     try {
-      const params = new URLSearchParams({
-        month: String(month),
-        year: String(year),
-      });
-      if (departureDay) {
-        params.set('startDay', '1');
-        params.set('endDay', departureDay);
-        params.set('prorateRent', 'true');
-      }
-      if (receipt?.status === 'pending_review') {
-        params.set('force', 'true');
-      }
+      const params = buildBillingParams(contract);
       const data = await apiFetch<GeneratedReceipt>(
         `/contracts/${contract.id}/receipts?${params}`,
         { method: 'POST' },
@@ -395,47 +404,26 @@ export default function DepartmentBilling() {
     } finally {
       setReceiptLoading(false);
     }
-  }, [contract, month, year, departureDay, receipt]);
+  }, [buildBillingParams, contract]);
 
-  const handleApproveReceipt = async () => {
+  const handleMarkAsPaid = async () => {
     if (!contract || !receipt) return;
-    setApprovingReceipt(true);
+    setMarkingPaid(true);
     try {
       const updated = await apiFetch<GeneratedReceipt>(
         `/contracts/${contract.id}/receipts/status?month=${month}&year=${year}`,
         {
           method: 'PATCH',
-          body: JSON.stringify({ status: 'approved' }),
+          body: JSON.stringify({ status: 'paid' }),
         },
       );
       setReceipt(updated);
-      showSuccess('Recibo aprobado exitosamente');
+      showSuccess('Recibo marcado como pagado');
     } catch (error) {
       const details = error instanceof Error ? ` (${error.message})` : '';
-      showError(`Error al aprobar recibo${details}`);
+      showError(`Error al marcar como pagado${details}`);
     } finally {
-      setApprovingReceipt(false);
-    }
-  };
-
-  const handleDenyReceipt = async () => {
-    if (!contract || !receipt) return;
-    setApprovingReceipt(true);
-    try {
-      const updated = await apiFetch<GeneratedReceipt>(
-        `/contracts/${contract.id}/receipts/status?month=${month}&year=${year}`,
-        {
-          method: 'PATCH',
-          body: JSON.stringify({ status: 'denied' }),
-        },
-      );
-      setReceipt(updated);
-      showSuccess('Recibo denegado');
-    } catch (error) {
-      const details = error instanceof Error ? ` (${error.message})` : '';
-      showError(`Error al denegar recibo${details}`);
-    } finally {
-      setApprovingReceipt(false);
+      setMarkingPaid(false);
     }
   };
 
@@ -530,26 +518,6 @@ export default function DepartmentBilling() {
     0,
   );
   const total = rentAmount + lightCost + waterCost + extraTotal;
-
-  const existingLateFeeMonths = new Set(
-    extraCharges
-      .filter((ec) => ec.type === 'late_fee')
-      .map((ec) => `${ec.month}-${ec.year}`),
-  );
-
-  const overdueReceipts: { month: number; year: number; balance: number }[] =
-    (() => {
-      if (!receipt || receipt.balance >= 0) return [];
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const graceEnd = new Date(receipt.year, receipt.month, 15);
-      if (today <= graceEnd) return [];
-      if (existingLateFeeMonths.has(`${receipt.month}-${receipt.year}`))
-        return [];
-      return [
-        { month: receipt.month, year: receipt.year, balance: receipt.balance },
-      ];
-    })();
 
   const guaranteeDepositAmt = contract ? Number(contract.guaranteeDeposit) : 0;
   const advanceAmt = contract ? Number(contract.advancePayment) : 0;
@@ -1177,54 +1145,6 @@ export default function DepartmentBilling() {
         </div>
       )}
 
-      {contract && !isTerminated && overdueReceipts.length > 0 && (
-        <div className="bg-surface rounded-2xl border border-border p-5 shadow-sm mb-6">
-          <h3 className="text-sm font-semibold text-on-surface-strong mb-3 flex items-center gap-2">
-            <AlertTriangle size={16} className="text-amber-500" />
-            Generar Mora por Atraso
-          </h3>
-          <div className="space-y-3">
-            {overdueReceipts.map((r) => (
-              <div
-                key={`${r.month}-${r.year}`}
-                className="flex flex-col sm:flex-row sm:items-center gap-3"
-              >
-                <div className="flex-1 text-[13px]">
-                  <span className="text-on-surface-medium">
-                    Recibo de {months[r.month - 1]} {r.year} — Saldo
-                    pendiente:{' '}
-                  </span>
-                  <span className="font-medium text-red-600 dark:text-red-400">
-                    S/ {Math.abs(r.balance).toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={lateFeeRate}
-                    onChange={(e) => setLateFeeRate(e.target.value)}
-                    className={inputCls + ' max-w-[100px] text-right'}
-                    title="Tarifa por dia de atraso"
-                  />
-                  <span className="text-[13px] text-on-surface-medium">
-                    S//dia
-                  </span>
-                  <button
-                    onClick={() => handleGenerateLateFee(r.month, r.year)}
-                    disabled={lateFeeLoading}
-                    className={btnCls}
-                  >
-                    {lateFeeLoading ? 'Generando...' : 'Generar Mora'}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {contract && receipt && (
         <div className="mb-4 px-4 py-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-700/40 text-blue-700 dark:text-blue-300 text-sm flex items-center gap-2">
           <FileText size={16} />
@@ -1243,7 +1163,12 @@ export default function DepartmentBilling() {
       {contract && !isTerminated && (
         <button
           onClick={handleGenerateReceipt}
-          disabled={receiptLoading}
+          disabled={receiptLoading || receipt?.status === 'paid'}
+          title={
+            receipt?.status === 'paid'
+              ? 'Recibo pagado — no se puede regenerar'
+              : undefined
+          }
           className="w-full py-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-surface-raised disabled:text-on-surface-faint text-white text-sm font-medium rounded-xl shadow-sm shadow-blue-600/20 transition-all duration-150 flex items-center justify-center gap-2"
         >
           <FileText size={16} />
@@ -1277,6 +1202,17 @@ export default function DepartmentBilling() {
               >
                 {receiptStatusLabel[receipt.status]}
               </span>
+              {receipt.status === 'paid' && receipt.paidAt && (
+                <p className="text-[11px] text-on-surface-muted mt-1.5">
+                  Pagado el{' '}
+                  {new Date(receipt.paidAt).toLocaleDateString('es-PE', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  })}
+                  {receipt.paidBy ? ` por ${receipt.paidBy.slice(0, 8)}` : ''}
+                </p>
+              )}
             </div>
 
             {receipt.items.length > 0 && (
@@ -1322,36 +1258,24 @@ export default function DepartmentBilling() {
             </div>
 
             <div className="flex gap-2 pt-2">
-              {receipt.status === 'pending_review' && (
-                <>
-                  <button
-                    onClick={handleApproveReceipt}
-                    disabled={approvingReceipt}
-                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-surface-raised disabled:text-on-surface-faint text-white text-sm font-medium rounded-xl shadow-sm transition-all duration-150 flex items-center justify-center gap-2"
-                  >
-                    <Check size={16} />
-                    {approvingReceipt ? 'Aprobando...' : 'Aprobar'}
-                  </button>
-                  <button
-                    onClick={handleDenyReceipt}
-                    disabled={approvingReceipt}
-                    className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:bg-surface-raised disabled:text-on-surface-faint text-white text-sm font-medium rounded-xl shadow-sm transition-all duration-150 flex items-center justify-center gap-2"
-                  >
-                    <XIcon size={16} />
-                    {approvingReceipt ? 'Procesando...' : 'Denegar'}
-                  </button>
-                </>
-              )}
-
-              {receipt.status === 'approved' && (
+              {receipt.status === 'unpaid' && (
                 <button
-                  onClick={handleSendWhatsApp}
-                  className="w-full py-2.5 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-sm font-medium rounded-xl shadow-sm transition-all duration-150 flex items-center justify-center gap-2"
+                  onClick={handleMarkAsPaid}
+                  disabled={markingPaid}
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-surface-raised disabled:text-on-surface-faint text-white text-sm font-medium rounded-xl shadow-sm transition-all duration-150 flex items-center justify-center gap-2"
                 >
-                  <Send size={16} />
-                  Enviar por WhatsApp
+                  <Check size={16} />
+                  {markingPaid ? 'Marcando...' : 'Marcar como pagado'}
                 </button>
               )}
+
+              <button
+                onClick={handleSendWhatsApp}
+                className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-sm font-medium rounded-xl shadow-sm transition-all duration-150 flex items-center justify-center gap-2"
+              >
+                <Send size={16} />
+                Enviar por WhatsApp
+              </button>
             </div>
           </div>
         )}

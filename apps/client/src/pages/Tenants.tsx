@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Users, Mail, Phone, AlertCircle, FileText } from 'lucide-react';
+import { Users, Mail, Phone, AlertCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiFetch, apiPost } from '../lib/api';
 import {
@@ -44,7 +44,7 @@ interface PendingReceipt {
   contractId: string;
   month: number;
   year: number;
-  status: 'pending_review' | 'approved' | 'denied';
+  status: 'unpaid' | 'paid';
   tenantName: string;
   departmentName: string;
   propertyAddress: string;
@@ -84,7 +84,7 @@ export default function Tenants() {
     () =>
       selectedPropertyId
         ? availableDepartments.filter(
-            (d) => d.property?.id === Number(selectedPropertyId),
+            (d) => d.property?.id === selectedPropertyId,
           )
         : [],
     [availableDepartments, selectedPropertyId],
@@ -95,7 +95,7 @@ export default function Tenants() {
       apiFetch<Tenant[]>('/tenants'),
       apiFetch<Property[]>('/properties'),
       apiFetch<Department[]>('/departments'),
-      apiFetch<PendingReceipt[]>('/contracts/receipts/pending'),
+      apiFetch<PendingReceipt[]>('/contracts/receipts/unpaid'),
     ])
       .then(([t, p, d, r]) => {
         setTenants(t);
@@ -191,101 +191,23 @@ export default function Tenants() {
       />
 
       {pendingReceipts.length > 0 && (
-        <div className="mb-6 bg-surface rounded-2xl border border-border shadow-sm p-4 sm:p-5">
-          <div className="flex items-center gap-2 mb-4">
+        <div className="mb-6 flex flex-col gap-3 rounded-xl border border-amber-200/70 bg-amber-50/80 p-4 text-amber-900 shadow-sm dark:border-amber-700/40 dark:bg-amber-950/30 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
             <AlertCircle
               size={20}
-              className="text-amber-600 dark:text-amber-400"
+              className="mt-0.5 flex-shrink-0 text-amber-600 dark:text-amber-400"
             />
-            <h2 className="text-lg font-semibold text-on-surface">
-              Recibos Pendientes de Pago
-            </h2>
-            <span className="ml-auto text-sm font-medium text-on-surface-medium">
-              {pendingReceipts.length}{' '}
-              {pendingReceipts.length === 1 ? 'recibo' : 'recibos'}
-            </span>
-          </div>
-
-          <div className="space-y-3">
-            {pendingReceipts.map((receipt) => (
-              <div
-                key={receipt.id}
-                className="bg-surface-alt rounded-xl border border-border-light p-3 sm:p-4 hover:shadow-md hover:shadow-shadow transition-all duration-200"
-              >
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <FileText
-                        size={16}
-                        className="text-primary-600 flex-shrink-0"
-                      />
-                      <h3 className="font-semibold text-on-surface truncate">
-                        {receipt.tenantName}
-                      </h3>
-                    </div>
-                    <p className="text-sm text-on-surface-medium mb-1">
-                      {receipt.departmentName} — {receipt.propertyAddress}
-                    </p>
-                    <p className="text-xs text-on-surface-muted">
-                      Periodo: {receipt.period}
-                    </p>
-                  </div>
-
-                  <div className="sm:text-right flex-shrink-0">
-                    <div className="text-sm text-on-surface-medium mb-1">
-                      Total:{' '}
-                      <span className="font-medium text-on-surface">
-                        S/ {receipt.totalDue.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="text-sm text-on-surface-medium mb-1">
-                      Pagado:{' '}
-                      <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                        S/ {receipt.totalPayments.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="text-sm font-bold text-red-600 dark:text-red-400">
-                      Debe: S/ {Math.abs(receipt.balance).toFixed(2)}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-3 pt-3 border-t border-border-light">
-                  <Link
-                    to={`/departments/${receipt.contractId}/billing`}
-                    className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
-                  >
-                    Ver detalles
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 5l7 7-7 7"
-                      />
-                    </svg>
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-4 pt-4 border-t border-border-light">
-            <div className="flex justify-between items-center text-sm">
-              <span className="font-semibold text-on-surface">
-                Total Adeudado:
-              </span>
-              <span className="text-lg font-bold text-red-600 dark:text-red-400">
-                S/{' '}
-                {pendingReceipts
-                  .reduce((sum, r) => sum + Math.abs(r.balance), 0)
-                  .toFixed(2)}
-              </span>
+            <div>
+              <p className="text-sm font-semibold">
+                Recibos pendientes de pago
+              </p>
+              <p className="text-sm text-amber-800 dark:text-amber-200/80">
+                Hay {pendingReceipts.length}{' '}
+                {pendingReceipts.length === 1
+                  ? 'recibo pendiente'
+                  : 'recibos pendientes'}{' '}
+                de pago.
+              </p>
             </div>
           </div>
         </div>

@@ -17,6 +17,8 @@ import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
 import { ReceiptService, Receipt } from '../receipt/receipt.service';
 import { UpdateReceiptStatusDto } from './dto/update-receipt-status.dto';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { JwtPayload } from '../auth/decorators/current-user.decorator';
 import {
   ContractSettlementService,
   SettlementResult,
@@ -36,9 +38,9 @@ export class ContractController {
     private readonly contractTerminationService: ContractTerminationService,
   ) {}
 
-  @Get('receipts/pending')
-  findPendingReceipts(): Promise<Receipt[]> {
-    return this.receiptService.findPendingReceipts();
+  @Get('receipts/unpaid')
+  findUnpaidReceipts(): Promise<Receipt[]> {
+    return this.receiptService.findUnpaidReceipts();
   }
 
   @Post()
@@ -109,7 +111,6 @@ export class ContractController {
     @Query('endDay', new ParseIntPipe({ optional: true })) endDay?: number,
     @Query('prorateRent', new ParseBoolPipe({ optional: true }))
     prorateRent?: boolean,
-    @Query('force', new ParseBoolPipe({ optional: true })) force?: boolean,
   ): Promise<Receipt> {
     return this.receiptService.issueReceipt(
       contractId,
@@ -118,7 +119,6 @@ export class ContractController {
       startDay,
       endDay,
       prorateRent,
-      force,
     );
   }
 
@@ -128,12 +128,14 @@ export class ContractController {
     @Query('month', ParseIntPipe) month: number,
     @Query('year', ParseIntPipe) year: number,
     @Body() updateReceiptStatusDto: UpdateReceiptStatusDto,
+    @CurrentUser() user: JwtPayload,
   ): Promise<Receipt> {
     return this.receiptService.updateReceiptStatus(
       contractId,
       month,
       year,
       updateReceiptStatusDto.status,
+      user.sub,
     );
   }
 

@@ -1,10 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { wipeLegacyReceiptStatuses } from './bootstrap/wipe-legacy-receipt-statuses';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const cookieParser = require('cookie-parser') as () => unknown;
 
 async function bootstrap() {
+  await wipeLegacyReceiptStatuses();
   const app = await NestFactory.create(AppModule);
   app.use(cookieParser());
   app.enableCors({

@@ -61,7 +61,7 @@ interface PendingReceipt {
   contractId: string;
   month: number;
   year: number;
-  status: 'pending_review' | 'approved' | 'denied';
+  status: 'unpaid' | 'paid';
   tenantName: string;
   departmentName: string;
   propertyAddress: string;
@@ -85,7 +85,7 @@ export default function TenantDashboard() {
     Promise.all([
       apiFetch<Tenant>(`/tenants/${tenantId}`),
       apiFetch<Contract[]>(`/contracts?tenantId=${tenantId}`),
-      apiFetch<PendingReceipt[]>(`/contracts/receipts/pending`),
+      apiFetch<PendingReceipt[]>(`/contracts/receipts/unpaid`),
     ])
       .then(([t, tenantContracts, allPendingReceipts]) => {
         setTenant(t);
