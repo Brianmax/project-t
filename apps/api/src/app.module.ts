@@ -9,7 +9,6 @@ import { DepartmentModule } from './department/department.module';
 import { TenantModule } from './tenant/tenant.module';
 import { ContractModule } from './contract/contract.module';
 import { DepartmentMeterModule } from './department-meter/department-meter.module';
-import { PropertyMeterModule } from './property-meter/property-meter.module';
 import { MeterReadingModule } from './meter-reading/meter-reading.module';
 import { ConsumptionModule } from './consumption/consumption.module';
 import { PaymentModule } from './payment/payment.module';
@@ -21,6 +20,9 @@ import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
 import { AdminModule } from './admin/admin.module';
 import { SeedModule } from './seed/seed.module';
+import { StorageModule } from './storage/storage.module';
+import { QueueModule } from './queue/queue.module';
+import { ReceiptPdfModule } from './receipt/pdf/receipt-pdf.module';
 import { JwtGuard } from './auth/guards/jwt.guard';
 
 @Module({
@@ -41,7 +43,6 @@ import { JwtGuard } from './auth/guards/jwt.guard';
     TenantModule,
     ContractModule,
     DepartmentMeterModule,
-    PropertyMeterModule,
     MeterReadingModule,
     ConsumptionModule,
     PaymentModule,
@@ -53,6 +54,9 @@ import { JwtGuard } from './auth/guards/jwt.guard';
     UserModule,
     AdminModule,
     SeedModule,
+    StorageModule,
+    QueueModule,
+    ReceiptPdfModule.forRoot(),
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: JwtGuard }],

@@ -17,12 +17,14 @@ import {
   Droplets,
   Zap,
   Pencil,
+  History,
 } from 'lucide-react';
 import { apiFetch, apiPost, apiPatch } from '../lib/api';
 import { PageSkeleton } from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import { showSuccess, showError } from '../lib/toast';
+import { formatDate } from '../lib/utils';
 import {
   inputCls,
   btnCls,
@@ -81,6 +83,7 @@ interface Contract {
   rentAmount: number;
   advancePayment: number;
   guaranteeDeposit: number;
+  status: 'active' | 'terminated';
   tenant: Tenant;
   department: Department;
 }
@@ -91,43 +94,15 @@ interface DepartmentMeter {
   department: Department;
 }
 
-interface PropertyMeter {
-  id: string;
-  meterType: 'light' | 'water';
-  property: Property;
-}
-
 interface Payment {
   id: string;
   amount: number;
   date: string;
   description?: string;
-  type: 'rent' | 'water' | 'light' | 'advance' | 'guarantee' | 'refund';
   contract: Contract;
 }
 
 type Tab = 'departments' | 'tenants' | 'meters' | 'payments';
-type MeterSubTab = 'department' | 'property';
-
-const typeLabels: Record<Payment['type'], string> = {
-  rent: 'Alquiler',
-  water: 'Agua',
-  light: 'Luz',
-  advance: 'Adelanto',
-  guarantee: 'Garantia',
-  refund: 'Devolucion',
-};
-
-const typeColors: Record<Payment['type'], string> = {
-  rent: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
-  water: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300',
-  light: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
-  advance:
-    'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300',
-  guarantee:
-    'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300',
-  refund: 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300',
-};
 
 export default function PropertyDetail() {
   const { id } = useParams<{ id: string }>();
@@ -135,10 +110,8 @@ export default function PropertyDetail() {
 
   const [property, setProperty] = useState<Property | null>(null);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [allContracts, setAllContracts] = useState<Contract[]>([]);
   const [allDeptMeters, setAllDeptMeters] = useState<DepartmentMeter[]>([]);
-  const [allPropMeters, setAllPropMeters] = useState<PropertyMeter[]>([]);
   const [allPayments, setAllPayments] = useState<Payment[]>([]);
 
   const [consumptionMap, setConsumptionMap] = useState<
@@ -148,7 +121,7 @@ export default function PropertyDetail() {
   const [loading, setLoading] = useState(true);
 
   const [tab, setTab] = useState<Tab>('departments');
-  const [meterSubTab, setMeterSubTab] = useState<MeterSubTab>('department');
+  const [showTenantHistory, setShowTenantHistory] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -189,7 +162,6 @@ export default function PropertyDetail() {
   const [payAmount, setPayAmount] = useState('');
   const [payDate, setPayDate] = useState('');
   const [payDesc, setPayDesc] = useState('');
-  const [payType, setPayType] = useState<Payment['type']>('rent');
   const [payContractId, setPayContractId] = useState('');
 
   const [readingModalOpen, setReadingModalOpen] = useState(false);
@@ -217,14 +189,35 @@ export default function PropertyDetail() {
     [allDeptMeters, departmentIds],
   );
 
-  const propMeters = useMemo(
-    () => allPropMeters.filter((m) => m.property?.id === propertyId),
-    [allPropMeters, propertyId],
-  );
-
   const payments = useMemo(
     () => allPayments.filter((p) => contractIds.has(p.contract?.id)),
     [allPayments, contractIds],
+  );
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  const isVisibleTenantContract = (contract: Contract) =>
+    contract.status === 'active' &&
+    contract.tenant &&
+    contract.endDate.slice(0, 10) >= today;
+
+  const visibleTenantContracts = useMemo(
+    () =>
+      contracts
+        .filter(isVisibleTenantContract)
+        .sort((a, b) =>
+          (a.department?.name || '').localeCompare(b.department?.name || '') ||
+          a.startDate.localeCompare(b.startDate),
+        ),
+    [contracts, today],
+  );
+
+  const historicalTenantContracts = useMemo(
+    () =>
+      contracts
+        .filter((c) => c.tenant && !isVisibleTenantContract(c))
+        .sort((a, b) => b.endDate.localeCompare(a.endDate)),
+    [contracts, today],
   );
 
   const totalPayments = useMemo(
@@ -236,19 +229,15 @@ export default function PropertyDetail() {
     Promise.all([
       apiFetch<Property>(`/properties/${propertyId}`),
       apiFetch<Department[]>(`/properties/${propertyId}/departments`),
-      apiFetch<Tenant[]>(`/properties/${propertyId}/tenants`),
       apiFetch<Contract[]>('/contracts'),
       apiFetch<DepartmentMeter[]>('/department-meters'),
-      apiFetch<PropertyMeter[]>('/property-meters'),
       apiFetch<Payment[]>('/payments'),
     ])
-      .then(([prop, depts, ten, con, dm, pm, pay]) => {
+      .then(([prop, depts, con, dm, pay]) => {
         setProperty(prop);
         setDepartments(depts);
-        setTenants(ten);
         setAllContracts(con);
         setAllDeptMeters(dm);
-        setAllPropMeters(pm);
         setAllPayments(pay);
       })
       .catch(() => showError('No se pudieron cargar los datos de la propiedad'))
@@ -267,13 +256,6 @@ export default function PropertyDetail() {
         });
     });
   }, [departments]);
-
-  const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString('es-PE', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
 
   const todayStr = () => new Date().toISOString().slice(0, 10);
 
@@ -312,7 +294,6 @@ export default function PropertyDetail() {
     setPayAmount('');
     setPayDate('');
     setPayDesc('');
-    setPayType('rent');
     setPayContractId('');
   };
 
@@ -421,12 +402,10 @@ export default function PropertyDetail() {
         departmentId: contractDeptId,
       });
 
-      const [tenantsData, contractsData, deptsData] = await Promise.all([
-        apiFetch<Tenant[]>(`/properties/${propertyId}/tenants`),
+      const [contractsData, deptsData] = await Promise.all([
         apiFetch<Contract[]>('/contracts'),
         apiFetch<Department[]>(`/properties/${propertyId}/departments`),
       ]);
-      setTenants(tenantsData);
       setAllContracts(contractsData);
       setDepartments(deptsData);
       setModalOpen(false);
@@ -442,30 +421,20 @@ export default function PropertyDetail() {
 
   const submitMeter = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (meterSubTab === 'department' && !meterEntityId) return;
+    if (!meterEntityId) return;
     setSubmitting(true);
     try {
-      if (meterSubTab === 'department') {
-        const added = await apiPost<DepartmentMeter>('/department-meters', {
-          meterType,
-          departmentId: meterEntityId,
-        });
-        setAllDeptMeters((prev) => [...prev, added]);
-        setModalOpen(false);
-        setReadingMeterId(added.id);
-        setReadingValue('');
-        setReadingDate(todayStr());
-        setReadingModalOpen(true);
-        showSuccess('Medidor de departamento agregado exitosamente');
-      } else {
-        const added = await apiPost<PropertyMeter>('/property-meters', {
-          meterType,
-          propertyId,
-        });
-        setAllPropMeters((prev) => [...prev, added]);
-        setModalOpen(false);
-        showSuccess('Medidor de propiedad agregado exitosamente');
-      }
+      const added = await apiPost<DepartmentMeter>('/department-meters', {
+        meterType,
+        departmentId: meterEntityId,
+      });
+      setAllDeptMeters((prev) => [...prev, added]);
+      setModalOpen(false);
+      setReadingMeterId(added.id);
+      setReadingValue('');
+      setReadingDate(todayStr());
+      setReadingModalOpen(true);
+      showSuccess('Medidor de departamento agregado exitosamente');
     } catch {
       showError('Error al agregar medidor');
     } finally {
@@ -481,7 +450,6 @@ export default function PropertyDetail() {
       const body: Record<string, unknown> = {
         amount: Number(payAmount),
         date: payDate,
-        type: payType,
         contractId: payContractId,
       };
       if (payDesc) body.description = payDesc;
@@ -540,11 +508,15 @@ export default function PropertyDetail() {
 
   const tabs: { key: Tab; label: string; count: number }[] = [
     { key: 'departments', label: 'Departamentos', count: departments.length },
-    { key: 'tenants', label: 'Inquilinos', count: tenants.length },
+    {
+      key: 'tenants',
+      label: 'Inquilinos',
+      count: visibleTenantContracts.length,
+    },
     {
       key: 'meters',
       label: 'Medidores',
-      count: deptMeters.length + propMeters.length,
+      count: deptMeters.length,
     },
     { key: 'payments', label: 'Pagos', count: payments.length },
   ];
@@ -566,7 +538,7 @@ export default function PropertyDetail() {
     },
     {
       label: 'Inquilinos',
-      value: tenants.length,
+      value: visibleTenantContracts.length,
       icon: Users,
       containerCls:
         'bg-emerald-50 dark:bg-emerald-950/40 ring-1 ring-emerald-100 dark:ring-emerald-800/40',
@@ -574,7 +546,7 @@ export default function PropertyDetail() {
     },
     {
       label: 'Medidores',
-      value: deptMeters.length + propMeters.length,
+      value: deptMeters.length,
       icon: Gauge,
       containerCls:
         'bg-cyan-50 dark:bg-cyan-950/40 ring-1 ring-cyan-100 dark:ring-cyan-800/40',
@@ -593,7 +565,7 @@ export default function PropertyDetail() {
   const modalTitle: Record<Tab, string> = {
     departments: 'Nuevo Departamento',
     tenants: 'Nuevo Inquilino',
-    meters: `Nuevo Medidor (${meterSubTab === 'department' ? 'Departamento' : 'Propiedad'})`,
+    meters: 'Nuevo Medidor',
     payments: 'Nuevo Pago',
   };
 
@@ -794,170 +766,180 @@ export default function PropertyDetail() {
           </div>
         ))}
 
-      {tab === 'tenants' &&
-        (tenants.length === 0 ? (
-          <EmptyState
-            icon={Users}
-            title="Sin inquilinos"
-            description="No hay inquilinos con contratos en esta propiedad."
-          />
-        ) : (
-          <div className={tableContainerCls}>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className={tableHeaderCls}>
-                  <th className={tableHeaderCellCls}>Nombre</th>
-                  <th className={`${tableHeaderCellCls} hidden md:table-cell`}>
-                    Departamento
-                  </th>
-                  <th className={tableHeaderCellCls}>Email</th>
-                  <th className={`${tableHeaderCellCls} hidden sm:table-cell`}>
-                    Telefono
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {tenants.map((t) => (
-                  <tr key={t.id} className={tableRowCls}>
-                    <td className={tableCellCls}>
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-100 dark:from-emerald-900/40 to-emerald-50 dark:to-emerald-950/30 flex items-center justify-center text-emerald-700 dark:text-emerald-300 font-semibold text-xs ring-1 ring-emerald-200/50 dark:ring-emerald-700/40">
-                          {t.name.charAt(0).toUpperCase()}
-                        </div>
-                        <Link
-                          to={`/tenants/${t.id}`}
-                          className="font-medium text-on-surface hover:text-primary-600 transition-colors"
-                        >
-                          {t.name}
-                        </Link>
-                      </div>
-                    </td>
-                    <td className={`${tableCellCls} hidden md:table-cell`}>
-                      <div className="flex items-center gap-1.5 text-on-surface-medium">
-                        <DoorOpen size={14} className="text-on-surface-faint" />
-                        {contracts
-                          .filter((c) => c.tenant?.id === t.id)
-                          .sort((a, b) => b.endDate.localeCompare(a.endDate))[0]
-                          ?.department?.name || '-'}
-                      </div>
-                    </td>
-                    <td className={tableCellCls}>
-                      {t.email ? (
-                        <div className="flex items-center gap-1.5 text-on-surface-medium">
-                          <Mail size={14} className="text-on-surface-faint" />
-                          {t.email}
-                        </div>
-                      ) : (
-                        <span className="text-on-surface-ghost">-</span>
-                      )}
-                    </td>
-                    <td className={`${tableCellCls} hidden sm:table-cell`}>
-                      <div className="flex items-center gap-1.5 text-on-surface-medium">
-                        <Phone size={14} className="text-on-surface-faint" />
-                        {t.phone}
-                      </div>
-                    </td>
+      {tab === 'tenants' && (
+        <div className="space-y-4">
+          {visibleTenantContracts.length === 0 ? (
+            <EmptyState
+              icon={Users}
+              title="Sin inquilinos vigentes"
+              description="No hay inquilinos con contratos vigentes en esta propiedad."
+            />
+          ) : (
+            <div className={tableContainerCls}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className={tableHeaderCls}>
+                    <th className={tableHeaderCellCls}>Nombre</th>
+                    <th
+                      className={`${tableHeaderCellCls} hidden md:table-cell`}
+                    >
+                      Departamento
+                    </th>
+                    <th className={tableHeaderCellCls}>Email</th>
+                    <th
+                      className={`${tableHeaderCellCls} hidden sm:table-cell`}
+                    >
+                      Telefono
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ))}
+                </thead>
+                <tbody>
+                  {visibleTenantContracts.map((contract) => (
+                    <tr key={contract.id} className={tableRowCls}>
+                      <td className={tableCellCls}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-100 dark:from-emerald-900/40 to-emerald-50 dark:to-emerald-950/30 flex items-center justify-center text-emerald-700 dark:text-emerald-300 font-semibold text-xs ring-1 ring-emerald-200/50 dark:ring-emerald-700/40">
+                            {contract.tenant.name.charAt(0).toUpperCase()}
+                          </div>
+                          <Link
+                            to={`/tenants/${contract.tenant.id}`}
+                            className="font-medium text-on-surface hover:text-primary-600 transition-colors"
+                          >
+                            {contract.tenant.name}
+                          </Link>
+                        </div>
+                      </td>
+                      <td className={`${tableCellCls} hidden md:table-cell`}>
+                        <div className="flex items-center gap-1.5 text-on-surface-medium">
+                          <DoorOpen
+                            size={14}
+                            className="text-on-surface-faint"
+                          />
+                          {contract.department?.name || '-'}
+                        </div>
+                      </td>
+                      <td className={tableCellCls}>
+                        {contract.tenant.email ? (
+                          <div className="flex items-center gap-1.5 text-on-surface-medium">
+                            <Mail
+                              size={14}
+                              className="text-on-surface-faint"
+                            />
+                            {contract.tenant.email}
+                          </div>
+                        ) : (
+                          <span className="text-on-surface-ghost">-</span>
+                        )}
+                      </td>
+                      <td className={`${tableCellCls} hidden sm:table-cell`}>
+                        <div className="flex items-center gap-1.5 text-on-surface-medium">
+                          <Phone
+                            size={14}
+                            className="text-on-surface-faint"
+                          />
+                          {contract.tenant.phone}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {historicalTenantContracts.length > 0 && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowTenantHistory((value) => !value)}
+                className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2 text-sm font-medium text-on-surface-medium transition-all duration-150 hover:bg-surface-alt hover:text-on-surface"
+              >
+                <History size={15} />
+                {showTenantHistory ? 'Ocultar historial' : 'Ver historial'} (
+                {historicalTenantContracts.length})
+              </button>
+
+              {showTenantHistory && (
+                <div className={`${tableContainerCls} mt-3`}>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className={tableHeaderCls}>
+                        <th className={tableHeaderCellCls}>Nombre</th>
+                        <th
+                          className={`${tableHeaderCellCls} hidden md:table-cell`}
+                        >
+                          Departamento
+                        </th>
+                        <th className={tableHeaderCellCls}>Periodo</th>
+                        <th
+                          className={`${tableHeaderCellCls} hidden sm:table-cell`}
+                        >
+                          Telefono
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historicalTenantContracts.map((contract) => (
+                        <tr key={contract.id} className={tableRowCls}>
+                          <td className={tableCellCls}>
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-surface-raised flex items-center justify-center text-on-surface-medium font-semibold text-xs ring-1 ring-border-ring">
+                                {contract.tenant.name.charAt(0).toUpperCase()}
+                              </div>
+                              <Link
+                                to={`/tenants/${contract.tenant.id}`}
+                                className="font-medium text-on-surface hover:text-primary-600 transition-colors"
+                              >
+                                {contract.tenant.name}
+                              </Link>
+                            </div>
+                          </td>
+                          <td
+                            className={`${tableCellCls} hidden md:table-cell`}
+                          >
+                            <div className="flex items-center gap-1.5 text-on-surface-medium">
+                              <DoorOpen
+                                size={14}
+                                className="text-on-surface-faint"
+                              />
+                              {contract.department?.name || '-'}
+                            </div>
+                          </td>
+                          <td className={tableCellCls}>
+                            <span className="text-on-surface-medium">
+                              {contract.startDate.slice(0, 10)} -{' '}
+                              {contract.endDate.slice(0, 10)}
+                            </span>
+                          </td>
+                          <td
+                            className={`${tableCellCls} hidden sm:table-cell`}
+                          >
+                            <div className="flex items-center gap-1.5 text-on-surface-medium">
+                              <Phone
+                                size={14}
+                                className="text-on-surface-faint"
+                              />
+                              {contract.tenant.phone}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {tab === 'meters' && (
         <>
-          <div className="flex gap-1 bg-surface-raised/80 p-1 rounded-xl w-fit mb-4">
-            <button
-              onClick={() => setMeterSubTab('department')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                meterSubTab === 'department'
-                  ? 'bg-surface text-on-surface shadow-sm ring-1 ring-black/[0.04]'
-                  : 'text-on-surface-muted hover:text-on-surface-medium'
-              }`}
-            >
-              Departamento ({deptMeters.length})
-            </button>
-            <button
-              onClick={() => setMeterSubTab('property')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                meterSubTab === 'property'
-                  ? 'bg-surface text-on-surface shadow-sm ring-1 ring-black/[0.04]'
-                  : 'text-on-surface-muted hover:text-on-surface-medium'
-              }`}
-            >
-              Propiedad ({propMeters.length})
-            </button>
-          </div>
-
-          {meterSubTab === 'department' ? (
-            deptMeters.length === 0 ? (
-              <EmptyState
-                icon={Gauge}
-                title="Sin medidores"
-                description="No hay medidores de departamento registrados."
-              />
-            ) : (
-              <div className={tableContainerCls}>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className={tableHeaderCls}>
-                      <th className={tableHeaderCellCls}>ID</th>
-                      <th className={tableHeaderCellCls}>Tipo</th>
-                      <th className={tableHeaderCellCls}>Departamento</th>
-                      <th className={tableHeaderCellCls}>Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {deptMeters.map((m) => (
-                      <tr key={m.id} className={tableRowCls}>
-                        <td
-                          className={`${tableCellCls} font-mono text-on-surface-muted text-xs`}
-                        >
-                          #{m.id}
-                        </td>
-                        <td className={tableCellCls}>
-                          <div className="flex items-center gap-2">
-                            {m.meterType === 'water' ? (
-                              <Droplets size={15} className="text-blue-500" />
-                            ) : (
-                              <Zap size={15} className="text-amber-500" />
-                            )}
-                            <span className="font-medium text-on-surface">
-                              {m.meterType === 'water' ? 'Agua' : 'Luz'}
-                            </span>
-                          </div>
-                        </td>
-                        <td
-                          className={`${tableCellCls} text-on-surface-medium`}
-                        >
-                          {m.department?.name || 'N/A'}
-                        </td>
-                        <td className={tableCellCls}>
-                          <button
-                            onClick={() => {
-                              setReadingMeterId(m.id);
-                              setReadingValue('');
-                              setReadingDate(todayStr());
-                              setReadingModalOpen(true);
-                            }}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-600 bg-primary-50 hover:bg-primary-100 rounded-lg transition-all duration-150"
-                            title="Agregar Lectura"
-                          >
-                            <Plus size={13} />
-                            Lectura
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )
-          ) : propMeters.length === 0 ? (
+          {deptMeters.length === 0 ? (
             <EmptyState
               icon={Gauge}
               title="Sin medidores"
-              description="No hay medidores de propiedad registrados."
+              description="No hay medidores de departamento registrados."
             />
           ) : (
             <div className={tableContainerCls}>
@@ -966,11 +948,12 @@ export default function PropertyDetail() {
                   <tr className={tableHeaderCls}>
                     <th className={tableHeaderCellCls}>ID</th>
                     <th className={tableHeaderCellCls}>Tipo</th>
-                    <th className={tableHeaderCellCls}>Propiedad</th>
+                    <th className={tableHeaderCellCls}>Departamento</th>
+                    <th className={tableHeaderCellCls}>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {propMeters.map((m) => (
+                  {deptMeters.map((m) => (
                     <tr key={m.id} className={tableRowCls}>
                       <td
                         className={`${tableCellCls} font-mono text-on-surface-muted text-xs`}
@@ -990,7 +973,22 @@ export default function PropertyDetail() {
                         </div>
                       </td>
                       <td className={`${tableCellCls} text-on-surface-medium`}>
-                        {m.property?.name || 'N/A'}
+                        {m.department?.name || 'N/A'}
+                      </td>
+                      <td className={tableCellCls}>
+                        <button
+                          onClick={() => {
+                            setReadingMeterId(m.id);
+                            setReadingValue('');
+                            setReadingDate(todayStr());
+                            setReadingModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-600 bg-primary-50 hover:bg-primary-100 rounded-lg transition-all duration-150"
+                          title="Agregar Lectura"
+                        >
+                          <Plus size={13} />
+                          Lectura
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -1055,9 +1053,9 @@ export default function PropertyDetail() {
                     <tr key={p.id} className={tableRowCls}>
                       <td className={tableCellCls}>
                         <span
-                          className={`inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-full ${typeColors[p.type]}`}
+                          className={`inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-full ${p.amount < 0 ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300' : 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'}`}
                         >
-                          {typeLabels[p.type]}
+                          {p.amount < 0 ? 'Reembolso' : 'Pago'}
                         </span>
                       </td>
                       <td
@@ -1337,36 +1335,6 @@ export default function PropertyDetail() {
 
           {tab === 'meters' && (
             <>
-              <div className="flex gap-1 bg-surface-raised/80 p-1 rounded-xl mb-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMeterSubTab('department');
-                    setMeterEntityId('');
-                  }}
-                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                    meterSubTab === 'department'
-                      ? 'bg-surface text-on-surface shadow-sm ring-1 ring-black/[0.04]'
-                      : 'text-on-surface-muted'
-                  }`}
-                >
-                  Departamento
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMeterSubTab('property');
-                    setMeterEntityId('');
-                  }}
-                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                    meterSubTab === 'property'
-                      ? 'bg-surface text-on-surface shadow-sm ring-1 ring-black/[0.04]'
-                      : 'text-on-surface-muted'
-                  }`}
-                >
-                  Propiedad
-                </button>
-              </div>
               <div>
                 <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
                   Tipo de Medidor
@@ -1382,40 +1350,24 @@ export default function PropertyDetail() {
                   <option value="water">Agua</option>
                 </select>
               </div>
-              {meterSubTab === 'department' ? (
-                <div>
-                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
-                    Departamento
-                  </label>
-                  <select
-                    value={meterEntityId}
-                    onChange={(e) => setMeterEntityId(e.target.value)}
-                    required
-                    className={inputCls}
-                  >
-                    <option value="">Seleccionar...</option>
-                    {departments.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
-                    Propiedad
-                  </label>
-                  <input
-                    type="text"
-                    value={property.name}
-                    disabled
-                    className={
-                      inputCls + ' bg-surface-alt text-on-surface-muted'
-                    }
-                  />
-                </div>
-              )}
+              <div>
+                <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+                  Departamento
+                </label>
+                <select
+                  value={meterEntityId}
+                  onChange={(e) => setMeterEntityId(e.target.value)}
+                  required
+                  className={inputCls}
+                >
+                  <option value="">Seleccionar...</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </>
           )}
 
@@ -1439,39 +1391,19 @@ export default function PropertyDetail() {
                   ))}
                 </select>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
-                    Monto
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={payAmount}
-                    onChange={(e) => setPayAmount(e.target.value)}
-                    placeholder="500.00"
-                    required
-                    className={inputCls}
-                  />
-                </div>
-                <div>
-                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
-                    Tipo
-                  </label>
-                  <select
-                    value={payType}
-                    onChange={(e) =>
-                      setPayType(e.target.value as Payment['type'])
-                    }
-                    className={inputCls}
-                  >
-                    {Object.entries(typeLabels).map(([k, v]) => (
-                      <option key={k} value={k}>
-                        {v}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+                  Monto
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={payAmount}
+                  onChange={(e) => setPayAmount(e.target.value)}
+                  placeholder="500.00"
+                  required
+                  className={inputCls}
+                />
               </div>
               <div>
                 <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">

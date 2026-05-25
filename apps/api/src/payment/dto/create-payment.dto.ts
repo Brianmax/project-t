@@ -6,11 +6,12 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
 } from 'class-validator';
-import { PaymentType } from '../entities/payment.entity';
+import { PaymentMethod } from '../entities/payment.entity';
 
 export class CreatePaymentDto {
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsNotEmpty()
   amount: number;
 
@@ -22,11 +23,20 @@ export class CreatePaymentDto {
   @IsOptional()
   description?: string;
 
-  @IsEnum(PaymentType)
+  @IsEnum(PaymentMethod)
   @IsNotEmpty()
-  type: PaymentType;
+  method: PaymentMethod;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(128)
+  reference?: string;
 
   @IsUUID()
   @IsNotEmpty()
   contractId: string;
+
+  @IsUUID()
+  @IsOptional()
+  receiptId?: string;
 }

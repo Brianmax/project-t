@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -33,24 +34,24 @@ export default function Modal({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-[8px] animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-xl backdrop-saturate-150 animate-fade-in p-4"
       onClick={(e) => {
         if (e.target === overlayRef.current) onClose();
       }}
     >
       <div
         className={cn(
-          'bg-surface rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-black/15',
-          'w-full sm:max-w-lg mx-0 sm:mx-4',
-          'max-h-[90vh] sm:max-h-[88vh]',
+          'bg-surface rounded-2xl shadow-2xl shadow-black/25',
+          'w-full max-w-[462px]',
+          'max-h-[calc(100vh-2rem)] sm:max-h-[88vh]',
           'flex flex-col animate-slide-up',
-          'ring-1 ring-black/[0.06] dark:ring-white/[0.06]',
+          'ring-1 ring-black/[0.06] dark:ring-white/[0.06] overflow-hidden',
         )}
       >
-        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-border">
+        <div className="flex items-center justify-between px-5 sm:px-6 py-5 border-b border-border">
           <h3 className="text-[15px] font-bold text-on-surface tracking-tight">
             {title}
           </h3>
@@ -66,6 +67,7 @@ export default function Modal({
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

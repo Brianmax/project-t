@@ -16,6 +16,7 @@ import {
 } from '../lib/styles';
 import DatePicker from '../components/DatePicker';
 import { showSuccess, showError } from '../lib/toast';
+import { formatDate } from '../lib/utils';
 
 interface Department {
   id: string;
@@ -244,11 +245,7 @@ export default function MeterReadings() {
                     {r.reading}
                   </td>
                   <td className={`${tableCellCls} text-on-surface-medium`}>
-                    {new Date(r.date).toLocaleDateString('es-PE', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric',
-                    })}
+                    {formatDate(r.date)}
                   </td>
                   <td className={`${tableCellCls} text-on-surface-medium`}>
                     {r.billingMonth != null && r.billingYear != null

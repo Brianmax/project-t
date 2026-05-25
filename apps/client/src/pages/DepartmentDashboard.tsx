@@ -19,6 +19,8 @@ import { PageSkeleton, TableSkeleton } from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import { showSuccess, showError } from '../lib/toast';
+import { formatDate } from '../lib/utils';
+
 import {
   inputCls,
   btnCls,
@@ -89,6 +91,7 @@ interface Contract {
   endDate: string;
   rentAmount: number;
   departmentId: string;
+  status: 'active' | 'terminated';
   tenant: Tenant;
 }
 
@@ -140,8 +143,17 @@ export default function DepartmentDashboard() {
         .then(([dept, allMeters, cons, allContracts]) => {
           setDepartment(dept);
 
+          const today = new Date().toISOString().slice(0, 10);
           const contract =
-            allContracts.find((c) => c.departmentId === departmentId) ?? null;
+            allContracts
+              .filter(
+                (c) =>
+                  c.departmentId === departmentId &&
+                  c.status === 'active' &&
+                  c.endDate >= today &&
+                  c.tenant,
+              )
+              .sort((a, b) => b.endDate.localeCompare(a.endDate))[0] ?? null;
           setActiveContract(contract);
 
           const deptMeters = allMeters.filter(
@@ -256,13 +268,6 @@ export default function DepartmentDashboard() {
       setSubmitting(false);
     }
   };
-
-  const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString('es-PE', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
 
   const openEdit = (id: string, value: number, date: string) => {
     setEditingId(id);
@@ -490,14 +495,16 @@ export default function DepartmentDashboard() {
             </span>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleBillingClick}
-          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 ring-1 ring-blue-200/50 dark:ring-blue-700/40 transition-all duration-150 flex-shrink-0"
-        >
-          <Receipt size={16} />
-          Facturacion
-        </button>
+        {activeContract?.tenant && (
+          <button
+            type="button"
+            onClick={handleBillingClick}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 ring-1 ring-blue-200/50 dark:ring-blue-700/40 transition-all duration-150 flex-shrink-0"
+          >
+            <Receipt size={16} />
+            Facturacion
+          </button>
+        )}
       </div>
 
       {activeContract?.tenant && (

@@ -18,6 +18,7 @@ import { apiFetch } from '../lib/api';
 import { PageSkeleton } from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import { showError } from '../lib/toast';
+import { formatDate } from '../lib/utils';
 
 interface Tenant {
   id: string;
@@ -48,13 +49,30 @@ interface Contract {
   };
 }
 
+type PaymentMethod =
+  | 'cash'
+  | 'bank_transfer'
+  | 'yape'
+  | 'plin'
+  | 'other';
+
 interface Payment {
   id: string;
   amount: number;
   date: string;
-  type: string;
+  method: PaymentMethod;
+  reference: string | null;
+  receiptId: string | null;
   contract?: { id: string };
 }
+
+const paymentMethodLabels: Record<PaymentMethod, string> = {
+  cash: 'Efectivo',
+  bank_transfer: 'Transferencia',
+  yape: 'Yape',
+  plin: 'Plin',
+  other: 'Otro',
+};
 
 interface PendingReceipt {
   id: string;
@@ -71,6 +89,14 @@ interface PendingReceipt {
   balance: number;
 }
 
+interface LedgerSnapshot {
+  contractId: string;
+  totalPaid: number;
+  totalBilled: number;
+  balance: number;
+  creditRemaining: number;
+}
+
 export default function TenantDashboard() {
   const { id } = useParams<{ id: string }>();
   const tenantId = id!;
@@ -79,6 +105,7 @@ export default function TenantDashboard() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [pendingReceipts, setPendingReceipts] = useState<PendingReceipt[]>([]);
+  const [ledger, setLedger] = useState<LedgerSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -87,7 +114,7 @@ export default function TenantDashboard() {
       apiFetch<Contract[]>(`/contracts?tenantId=${tenantId}`),
       apiFetch<PendingReceipt[]>(`/contracts/receipts/unpaid`),
     ])
-      .then(([t, tenantContracts, allPendingReceipts]) => {
+      .then(async ([t, tenantContracts, allPendingReceipts]) => {
         setTenant(t);
         tenantContracts.sort((a, b) => b.endDate.localeCompare(a.endDate));
         setContracts(tenantContracts);
@@ -102,7 +129,12 @@ export default function TenantDashboard() {
           (c) => new Date(c.endDate) >= new Date(),
         );
         if (active) {
-          return apiFetch<Payment[]>(`/payments?contractId=${active.id}`);
+          const [p, l] = await Promise.all([
+            apiFetch<Payment[]>(`/payments?contractId=${active.id}`),
+            apiFetch<LedgerSnapshot>(`/contracts/${active.id}/ledger`),
+          ]);
+          setLedger(l);
+          return p;
         }
         return Promise.resolve([] as Payment[]);
       })
@@ -113,13 +145,6 @@ export default function TenantDashboard() {
       })
       .finally(() => setLoading(false));
   }, [tenantId]);
-
-  const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString('es-PE', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
 
   if (loading) return <PageSkeleton />;
 
@@ -235,6 +260,30 @@ export default function TenantDashboard() {
                       S/ {Number(activeContract.guaranteeDeposit).toFixed(2)}
                     </div>
                   </div>
+                  {ledger && (
+                    <div className="sm:col-span-2 p-3 rounded-xl bg-surface-alt/80 ring-1 ring-border-ring flex justify-between items-center">
+                      <div>
+                        <p className="text-on-surface-muted text-[11px] mb-0.5 uppercase tracking-wider font-medium">
+                          Saldo del Contrato
+                        </p>
+                        <p
+                          className={`text-lg font-bold ${ledger.balance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}
+                        >
+                          S/ {ledger.balance.toFixed(2)}
+                        </p>
+                      </div>
+                      {ledger.creditRemaining > 0 && (
+                        <div className="text-right">
+                          <p className="text-on-surface-muted text-[11px] mb-0.5 uppercase tracking-wider font-medium">
+                            Crédito Disponible
+                          </p>
+                          <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                            S/ {ledger.creditRemaining.toFixed(2)}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -422,27 +471,22 @@ export default function TenantDashboard() {
                       <div className="flex justify-between items-center text-xs">
                         <span
                           className={`px-2 py-0.5 rounded-md font-medium ${
-                            p.type === 'rent'
-                              ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
-                              : p.type === 'water'
-                                ? 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300'
-                                : p.type === 'light'
-                                  ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
-                                  : 'bg-surface-raised text-on-surface-medium'
+                            Number(p.amount) < 0
+                              ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300'
+                              : 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
                           }`}
                         >
-                          {p.type === 'rent'
-                            ? 'Alquiler'
-                            : p.type === 'water'
-                              ? 'Agua'
-                              : p.type === 'light'
-                                ? 'Luz'
-                                : p.type}
+                          {Number(p.amount) < 0 ? 'Reembolso' : 'Pago'}
                         </span>
-                        <span className="text-on-surface-faint font-mono">
-                          #{p.contract?.id}
+                        <span className="text-on-surface-faint">
+                          {paymentMethodLabels[p.method] ?? p.method}
                         </span>
                       </div>
+                      {p.reference && (
+                        <div className="text-[11px] text-on-surface-muted mt-1 truncate">
+                          Ref: {p.reference}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

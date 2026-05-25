@@ -7,16 +7,18 @@ import {
   Plus,
   FileText,
   AlertTriangle,
-  Check,
   Send,
   Ban,
+  Wallet,
 } from 'lucide-react';
 import { apiFetch, apiPost } from '../lib/api';
 import { PageSkeleton } from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
+import Dropdown from '../components/Dropdown';
 import { showSuccess, showError } from '../lib/toast';
 import { inputCls, btnCls } from '../lib/styles';
+import { formatDate } from '../lib/utils';
 
 interface Property {
   id: string;
@@ -71,10 +73,29 @@ interface ExtraCharge {
   daysOverdue: number | null;
 }
 
+interface LinkedPayment {
+  id: string;
+  amount: number;
+  date: string;
+  method: 'cash' | 'bank_transfer' | 'yape' | 'plin' | 'other';
+  reference: string | null;
+  description: string | null;
+}
+
+const paymentMethodLabels: Record<LinkedPayment['method'], string> = {
+  cash: 'Efectivo',
+  bank_transfer: 'Transferencia',
+  yape: 'Yape',
+  plin: 'Plin',
+  other: 'Otro',
+};
+
 interface ReceiptItem {
   description: string;
   amount: number;
 }
+
+type PdfStatus = 'idle' | 'queued' | 'rendering' | 'ready' | 'failed';
 
 interface GeneratedReceipt {
   id?: string;
@@ -85,6 +106,7 @@ interface GeneratedReceipt {
   paidAt: string | null;
   paidBy: string | null;
   tenantName: string;
+  tenantDocumentId: string | null;
   departmentName: string;
   propertyAddress: string;
   period: string;
@@ -92,6 +114,12 @@ interface GeneratedReceipt {
   totalPayments: number;
   totalDue: number;
   balance: number;
+  carryForwardDetails: Array<{ period: string; balance: number }> | null;
+  carryForwardBalance: number;
+  pdfKey: string | null;
+  pdfGeneratedAt: string | null;
+  pdfStatus: PdfStatus;
+  pdfError: string | null;
 }
 
 interface TerminationResult {
@@ -111,6 +139,26 @@ interface TerminationResult {
   createdAt: string;
 }
 
+interface LedgerReceiptSnapshot {
+  id: string;
+  month: number;
+  year: number;
+  totalDue: number;
+  appliedCredit: number;
+  remaining: number;
+  status: 'paid' | 'unpaid';
+  paidAt: string | null;
+}
+
+interface LedgerSnapshot {
+  contractId: string;
+  totalPaid: number;
+  totalBilled: number;
+  balance: number;
+  receipts: LedgerReceiptSnapshot[];
+  creditRemaining: number;
+}
+
 export default function DepartmentBilling() {
   const { id } = useParams<{ id: string }>();
   const departmentId = id!;
@@ -122,6 +170,7 @@ export default function DepartmentBilling() {
   const [department, setDepartment] = useState<Department | null>(null);
   const [contract, setContract] = useState<Contract | null>(null);
   const [consumption, setConsumption] = useState<ConsumptionData | null>(null);
+  const [missingMeterTypes, setMissingMeterTypes] = useState<string[]>([]);
   const [extraCharges, setExtraCharges] = useState<ExtraCharge[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -152,7 +201,19 @@ export default function DepartmentBilling() {
     null,
   );
   const [receiptLoading, setReceiptLoading] = useState(false);
-  const [markingPaid, setMarkingPaid] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfTimedOut, setPdfTimedOut] = useState(false);
+
+  const [linkedPayments, setLinkedPayments] = useState<LinkedPayment[]>([]);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
+  const [paymentMethod, setPaymentMethod] =
+    useState<LinkedPayment['method']>('cash');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentDescription, setPaymentDescription] = useState('');
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [ledger, setLedger] = useState<LedgerSnapshot | null>(null);
   const receiptStatusLabel: Record<GeneratedReceipt['status'], string> = {
     unpaid: 'No pagado',
     paid: 'Pagado',
@@ -203,6 +264,7 @@ export default function DepartmentBilling() {
   const fetchData = useCallback(async () => {
     setReceipt(null);
     setPreviewReceipt(null);
+    setLedger(null);
 
     try {
       const [dept, contracts, latestReading, earliestBilling] =
@@ -235,8 +297,19 @@ export default function DepartmentBilling() {
 
       const periodParams = buildBillingParams(activeContract);
       const cons = await apiFetch<{
-        light: { consumption: number; cost: number };
-        water: { consumption: number; cost: number };
+        light: {
+          consumption: number;
+          cost: number;
+          currentReading: number | null;
+          previousReading: number | null;
+        };
+        water: {
+          consumption: number;
+          cost: number;
+          currentReading: number | null;
+          previousReading: number | null;
+        };
+        missingMeterTypes: string[];
       }>(
         `/departments/${departmentId}/consumption/period?${periodParams}`,
       ).catch(() => null);
@@ -247,18 +320,19 @@ export default function DepartmentBilling() {
               light: {
                 consumption: cons.light.consumption,
                 cost: cons.light.cost,
-                lastReading: null,
-                prevReading: cons.light.consumption > 0 ? 0 : null,
+                lastReading: cons.light.currentReading,
+                prevReading: cons.light.previousReading,
               },
               water: {
                 consumption: cons.water.consumption,
                 cost: cons.water.cost,
-                lastReading: null,
-                prevReading: cons.water.consumption > 0 ? 0 : null,
+                lastReading: cons.water.currentReading,
+                prevReading: cons.water.previousReading,
               },
             }
           : null,
       );
+      setMissingMeterTypes(cons?.missingMeterTypes ?? []);
 
       if (activeContract) {
         const [charges, existingTermination, months] = await Promise.all([
@@ -296,6 +370,16 @@ export default function DepartmentBilling() {
           }
         } catch {
           // No receipt data available for this period
+        }
+
+        // Fetch ledger for payment pre-fill
+        try {
+          const ledgerData = await apiFetch<LedgerSnapshot>(
+            `/contracts/${activeContract.id}/ledger`,
+          );
+          setLedger(ledgerData);
+        } catch {
+          setLedger(null);
         }
       } else {
         setExtraCharges([]);
@@ -398,6 +482,16 @@ export default function DepartmentBilling() {
           ? prev
           : [...prev, { month: data.month, year: data.year }],
       );
+
+      // If the backend auto-enqueued a PDF regeneration (because the
+      // receipt already had a PDF), start polling so the modal reflects
+      // the new render landing in storage.
+      if (
+        data.id &&
+        (data.pdfStatus === 'queued' || data.pdfStatus === 'rendering')
+      ) {
+        void pollPdfStatus(contract.id, data.id);
+      }
     } catch (error) {
       const details = error instanceof Error ? ` (${error.message})` : '';
       showError(`Error al generar recibo${details}`);
@@ -406,29 +500,173 @@ export default function DepartmentBilling() {
     }
   }, [buildBillingParams, contract]);
 
-  const handleMarkAsPaid = async () => {
-    if (!contract || !receipt) return;
-    setMarkingPaid(true);
+  const loadLinkedPayments = useCallback(async (receiptId: string) => {
     try {
-      const updated = await apiFetch<GeneratedReceipt>(
-        `/contracts/${contract.id}/receipts/status?month=${month}&year=${year}`,
-        {
-          method: 'PATCH',
-          body: JSON.stringify({ status: 'paid' }),
-        },
+      const list = await apiFetch<LinkedPayment[]>(
+        `/receipts/${receiptId}/payments`,
       );
-      setReceipt(updated);
-      showSuccess('Recibo marcado como pagado');
-    } catch (error) {
-      const details = error instanceof Error ? ` (${error.message})` : '';
-      showError(`Error al marcar como pagado${details}`);
+      setLinkedPayments(list);
+    } catch {
+      setLinkedPayments([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (receipt?.id) {
+      loadLinkedPayments(receipt.id);
+    } else {
+      setLinkedPayments([]);
+    }
+  }, [receipt?.id, loadLinkedPayments]);
+
+  const refreshReceiptAfterPayment = useCallback(async () => {
+    if (!contract) return;
+    try {
+      const [updatedReceipt, updatedLedger] = await Promise.all([
+        apiFetch<GeneratedReceipt>(
+          `/contracts/${contract.id}/receipts?${buildBillingParams(contract)}`,
+        ),
+        apiFetch<LedgerSnapshot>(`/contracts/${contract.id}/ledger`).catch(
+          () => null,
+        ),
+      ]);
+      setReceipt(updatedReceipt);
+      setPreviewReceipt(updatedReceipt);
+      if (updatedLedger) setLedger(updatedLedger);
+    } catch {
+      // swallow — payment recorded server-side; UI may be stale until reload
+    }
+  }, [contract, buildBillingParams]);
+
+  const openPaymentModal = () => {
+    if (!receipt) return;
+    // Prefer ledger remaining (FIFO-aware) over receipt.balance
+    let owed = -receipt.balance;
+    if (ledger && receipt.id) {
+      const snap = ledger.receipts.find((r) => r.id === receipt.id);
+      if (snap) owed = snap.remaining;
+    }
+    setPaymentAmount(owed > 0 ? owed.toFixed(2) : '');
+    setPaymentDate(new Date().toISOString().slice(0, 10));
+    setPaymentMethod('cash');
+    setPaymentReference('');
+    setPaymentDescription('');
+    setPaymentModalOpen(true);
+  };
+
+  const handleSubmitPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!contract || !receipt?.id || !paymentAmount || !paymentDate) return;
+    setPaymentSubmitting(true);
+    try {
+      const body: Record<string, unknown> = {
+        amount: Number(paymentAmount),
+        date: paymentDate,
+        method: paymentMethod,
+        contractId: contract.id,
+        receiptId: receipt.id,
+      };
+      if (paymentReference) body.reference = paymentReference;
+      if (paymentDescription) body.description = paymentDescription;
+      await apiPost('/payments', body);
+      setPaymentModalOpen(false);
+      showSuccess('Pago registrado');
+      await Promise.all([
+        loadLinkedPayments(receipt.id),
+        refreshReceiptAfterPayment(),
+      ]);
+    } catch {
+      showError('No se pudo registrar el pago');
     } finally {
-      setMarkingPaid(false);
+      setPaymentSubmitting(false);
     }
   };
 
   const handleSendWhatsApp = () => {
     alert('WhatsApp sending will be implemented in next phase');
+  };
+
+  const pollPdfStatus = useCallback(
+    async (contractId: string, receiptId: string) => {
+      const start = Date.now();
+      const MAX_WAIT_MS = 60_000;
+      const INTERVAL_MS = 1500;
+
+      while (Date.now() - start < MAX_WAIT_MS) {
+        await new Promise((r) => setTimeout(r, INTERVAL_MS));
+        try {
+          const status = await apiFetch<{
+            pdfStatus: PdfStatus;
+            pdfGeneratedAt: string | null;
+            pdfError: string | null;
+          }>(
+            `/contracts/${contractId}/receipts/${receiptId}/pdf/status`,
+          );
+          setReceipt((prev) =>
+            prev && prev.id === receiptId
+              ? {
+                  ...prev,
+                  pdfStatus: status.pdfStatus,
+                  pdfGeneratedAt: status.pdfGeneratedAt,
+                  pdfError: status.pdfError,
+                }
+              : prev,
+          );
+          if (status.pdfStatus === 'ready' || status.pdfStatus === 'failed') {
+            return status.pdfStatus;
+          }
+        } catch (err) {
+          const details = err instanceof Error ? ` (${err.message})` : '';
+          showError(`Error consultando estado del PDF${details}`);
+          return 'failed' as PdfStatus;
+        }
+      }
+      setPdfTimedOut(true);
+      return 'timeout';
+    },
+    [],
+  );
+
+  const handleGeneratePdf = async () => {
+    if (!contract || !receipt?.id) return;
+    setPdfTimedOut(false);
+    setPdfLoading(true);
+    try {
+      const queued = await apiFetch<{
+        jobId: string;
+        pdfStatus: PdfStatus;
+      }>(
+        `/contracts/${contract.id}/receipts/${receipt.id}/pdf`,
+        { method: 'POST' },
+      );
+      setReceipt((prev) =>
+        prev ? { ...prev, pdfStatus: queued.pdfStatus, pdfError: null } : prev,
+      );
+      const finalStatus = await pollPdfStatus(contract.id, receipt.id);
+      if (finalStatus === 'ready') {
+        showSuccess('PDF listo para descargar');
+      } else if (finalStatus === 'failed') {
+        showError('Error al generar PDF');
+      }
+    } catch (err) {
+      const details = err instanceof Error ? ` (${err.message})` : '';
+      showError(`Error al generar PDF${details}`);
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!contract || !receipt?.id) return;
+    try {
+      const { url } = await apiFetch<{ url: string; filename: string }>(
+        `/contracts/${contract.id}/receipts/${receipt.id}/pdf`,
+      );
+      window.location.href = url;
+    } catch (err) {
+      const details = err instanceof Error ? ` (${err.message})` : '';
+      showError(`Error al descargar PDF${details}`);
+    }
   };
 
   const handleTerminate = async () => {
@@ -489,8 +727,14 @@ export default function DepartmentBilling() {
   if (consumption) {
     lightCost = consumption.light.cost;
     waterCost = consumption.water.cost;
-    lightHasReadings = consumption.light.consumption > 0;
-    waterHasReadings = consumption.water.consumption > 0;
+    // "Has readings" means both current AND previous reading exist so we can
+    // actually compute consumption. A delta of 0 is legitimate (no usage).
+    lightHasReadings =
+      consumption.light.lastReading !== null &&
+      consumption.light.prevReading !== null;
+    waterHasReadings =
+      consumption.water.lastReading !== null &&
+      consumption.water.prevReading !== null;
   } else if (displaySource) {
     const lightItem = displaySource.items.find(
       (item) =>
@@ -512,12 +756,23 @@ export default function DepartmentBilling() {
     lightHasReadings && consumption ? consumption.light.consumption : null;
   const waterUnits =
     waterHasReadings && consumption ? consumption.water.consumption : null;
+  const lightReadingPair =
+    lightHasReadings && consumption
+      ? `${consumption.light.prevReading} → ${consumption.light.lastReading}`
+      : null;
+  const waterReadingPair =
+    waterHasReadings && consumption
+      ? `${consumption.water.prevReading} → ${consumption.water.lastReading}`
+      : null;
 
   const extraTotal = extraCharges.reduce(
     (sum, ec) => sum + Number(ec.amount),
     0,
   );
-  const total = rentAmount + lightCost + waterCost + extraTotal;
+  const currentMonthTotal = rentAmount + lightCost + waterCost + extraTotal;
+  const carryForwardDetails = displaySource?.carryForwardDetails ?? null;
+  const carryForwardBalance = Number(displaySource?.carryForwardBalance ?? 0);
+  const total = currentMonthTotal + carryForwardBalance;
 
   const guaranteeDepositAmt = contract ? Number(contract.guaranteeDeposit) : 0;
   const advanceAmt = contract ? Number(contract.advancePayment) : 0;
@@ -733,17 +988,13 @@ export default function DepartmentBilling() {
                     Fecha esperada de salida
                   </span>
                   <span className="text-on-surface font-medium">
-                    {new Date(
-                      termination.expectedDepartureDate,
-                    ).toLocaleDateString('es-PE')}
+                    {formatDate(termination.expectedDepartureDate)}
                   </span>
                   <span className="text-on-surface-medium">
                     Fecha real de salida
                   </span>
                   <span className="text-on-surface font-medium">
-                    {new Date(
-                      termination.actualDepartureDate,
-                    ).toLocaleDateString('es-PE')}
+                    {formatDate(termination.actualDepartureDate)}
                   </span>
                   {termination.apartmentCondition && (
                     <>
@@ -808,9 +1059,7 @@ export default function DepartmentBilling() {
                   </span>
                   <span className="text-[14px] font-semibold text-on-surface">
                     {departureDay
-                      ? new Date(
-                          actualDepartureDate + 'T12:00:00',
-                        ).toLocaleDateString('es-PE', {
+                      ? formatDate(actualDepartureDate, {
                           day: '2-digit',
                           month: 'long',
                           year: 'numeric',
@@ -1006,13 +1255,27 @@ export default function DepartmentBilling() {
         </div>
       )}
 
-      {contract && (!lightHasReadings || !waterHasReadings) && (
+      {contract && missingMeterTypes.length > 0 && (
         <div className="mb-6 px-4 py-3 rounded-xl bg-status-warning-bg border border-status-warning-border text-status-warning-text text-sm flex items-center gap-2">
           <AlertTriangle size={16} />
-          Pendiente de lecturas — algunos servicios no tienen lecturas
-          suficientes.
+          <span>
+            Faltan lecturas para este periodo (
+            {missingMeterTypes
+              .map((t) => (t === 'light' ? 'luz' : t === 'water' ? 'agua' : t))
+              .join(', ')}
+            ). Registra la lectura antes de generar el recibo.
+          </span>
         </div>
       )}
+      {contract &&
+        missingMeterTypes.length === 0 &&
+        (!lightHasReadings || !waterHasReadings) && (
+          <div className="mb-6 px-4 py-3 rounded-xl bg-status-warning-bg border border-status-warning-border text-status-warning-text text-sm flex items-center gap-2">
+            <AlertTriangle size={16} />
+            Pendiente de lecturas previas — algunos servicios aún no muestran
+            consumo (falta lectura base).
+          </div>
+        )}
 
       {contract && (
         <div className="bg-surface rounded-2xl border border-border p-5 shadow-sm mb-6">
@@ -1031,6 +1294,11 @@ export default function DepartmentBilling() {
             <div className="flex justify-between text-sm">
               <span className="text-on-surface-medium">
                 Luz {lightUnits !== null ? `(${lightUnits} u)` : ''}
+                {lightReadingPair && (
+                  <span className="text-xs text-on-surface-muted ml-1.5">
+                    [{lightReadingPair}]
+                  </span>
+                )}
               </span>
               {lightHasReadings ? (
                 <span className="font-medium text-on-surface">
@@ -1046,6 +1314,11 @@ export default function DepartmentBilling() {
             <div className="flex justify-between text-sm">
               <span className="text-on-surface-medium">
                 Agua {waterUnits !== null ? `(${waterUnits} u)` : ''}
+                {waterReadingPair && (
+                  <span className="text-xs text-on-surface-muted ml-1.5">
+                    [{waterReadingPair}]
+                  </span>
+                )}
               </span>
               {waterHasReadings ? (
                 <span className="font-medium text-on-surface">
@@ -1085,9 +1358,33 @@ export default function DepartmentBilling() {
               </div>
             ))}
 
+            {carryForwardDetails && carryForwardDetails.length > 0 && (
+              <div className="border-t border-border pt-2 mt-2 space-y-1">
+                {carryForwardDetails.map((cf, i) => (
+                  <div
+                    key={`${cf.period}-${i}`}
+                    className="flex justify-between text-sm"
+                  >
+                    <span className="text-amber-600 dark:text-amber-400">
+                      Saldo pendiente de {cf.period}
+                    </span>
+                    <span className="font-medium text-amber-600 dark:text-amber-400">
+                      S/ {Number(cf.balance).toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+                <div className="flex justify-between text-xs text-on-surface-muted pt-0.5">
+                  <span>Subtotal mes</span>
+                  <span>S/ {currentMonthTotal.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+
             <div className="border-t border-border pt-2 mt-2">
               <div className="flex justify-between text-sm font-bold">
-                <span className="text-on-surface">Total</span>
+                <span className="text-on-surface">
+                  {carryForwardBalance > 0 ? 'Total a pagar' : 'Total'}
+                </span>
                 <span className="text-on-surface">S/ {total.toFixed(2)}</span>
               </div>
             </div>
@@ -1154,7 +1451,15 @@ export default function DepartmentBilling() {
             </span>
             <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
               Estado: {receiptStatusLabel[receipt.status]} • Total: S/{' '}
-              {receipt.totalDue.toFixed(2)}
+              {(
+                Number(receipt.totalDue) + Number(receipt.carryForwardBalance ?? 0)
+              ).toFixed(2)}
+              {Number(receipt.carryForwardBalance ?? 0) > 0 && (
+                <span className="ml-1 text-amber-600 dark:text-amber-400">
+                  (incl. S/ {Number(receipt.carryForwardBalance).toFixed(2)} de
+                  meses anteriores)
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -1163,11 +1468,17 @@ export default function DepartmentBilling() {
       {contract && !isTerminated && (
         <button
           onClick={handleGenerateReceipt}
-          disabled={receiptLoading || receipt?.status === 'paid'}
+          disabled={
+            receiptLoading ||
+            receipt?.status === 'paid' ||
+            missingMeterTypes.length > 0
+          }
           title={
             receipt?.status === 'paid'
               ? 'Recibo pagado — no se puede regenerar'
-              : undefined
+              : missingMeterTypes.length > 0
+                ? 'Registra las lecturas pendientes antes de generar el recibo'
+                : undefined
           }
           className="w-full py-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-surface-raised disabled:text-on-surface-faint text-white text-sm font-medium rounded-xl shadow-sm shadow-blue-600/20 transition-all duration-150 flex items-center justify-center gap-2"
         >
@@ -1193,6 +1504,11 @@ export default function DepartmentBilling() {
             <div className="text-[13px] text-on-surface-medium">
               {receipt.tenantName} — {receipt.departmentName}
             </div>
+            {receipt.tenantDocumentId && (
+              <div className="text-[12px] text-on-surface-muted">
+                DNI: {receipt.tenantDocumentId}
+              </div>
+            )}
             <div className="text-[13px] text-on-surface-muted">
               {receipt.propertyAddress}
             </div>
@@ -1205,7 +1521,7 @@ export default function DepartmentBilling() {
               {receipt.status === 'paid' && receipt.paidAt && (
                 <p className="text-[11px] text-on-surface-muted mt-1.5">
                   Pagado el{' '}
-                  {new Date(receipt.paidAt).toLocaleDateString('es-PE', {
+                  {formatDate(receipt.paidAt, {
                     day: 'numeric',
                     month: 'long',
                     year: 'numeric',
@@ -1230,55 +1546,281 @@ export default function DepartmentBilling() {
               </div>
             )}
 
+            {receipt.carryForwardDetails && receipt.carryForwardDetails.length > 0 && (
+              <div className="space-y-1.5 pt-2 border-t border-border">
+                <p className="text-[12px] font-semibold text-on-surface-medium pt-2 uppercase tracking-wider">
+                  Saldo anterior (Deuda pendiente)
+                </p>
+                {receipt.carryForwardDetails.map((item, i) => (
+                  <div key={i} className="flex justify-between text-[13px]">
+                    <span className="text-on-surface-medium">
+                      Saldo pendiente · {item.period}
+                    </span>
+                    <span className="font-medium text-red-600 dark:text-red-400">
+                      S/ {item.balance.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {linkedPayments.length > 0 && (
+              <div className="space-y-1 pt-2 border-t border-border">
+                <p className="text-[12px] font-semibold text-on-surface-medium pt-2">
+                  Pagos registrados
+                </p>
+                {linkedPayments.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex justify-between text-[13px]"
+                  >
+                    <span className="text-on-surface-medium">
+                      {formatDate(p.date, {
+                        day: '2-digit',
+                        month: 'short',
+                      })}{' '}
+                      · {paymentMethodLabels[p.method]}
+                      {p.reference ? ` · ${p.reference}` : ''}
+                    </span>
+                    <span
+                      className={
+                        Number(p.amount) < 0
+                          ? 'font-medium text-rose-600 dark:text-rose-400'
+                          : 'font-medium text-emerald-600 dark:text-emerald-400'
+                      }
+                    >
+                      S/ {Number(p.amount).toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="bg-surface-alt rounded-xl ring-1 ring-border-ring p-4 space-y-1">
               <div className="flex justify-between text-sm">
-                <span className="text-on-surface-medium">Total a pagar</span>
+                <span className="text-on-surface-medium">
+                  Total mes actual
+                </span>
                 <span className="font-semibold">
                   S/ {receipt.totalDue.toFixed(2)}
                 </span>
               </div>
+              {receipt.carryForwardBalance > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-on-surface-medium">Saldo anterior</span>
+                  <span className="font-medium text-red-600 dark:text-red-400">
+                    S/ {receipt.carryForwardBalance.toFixed(2)}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span className="text-on-surface-medium">Pagos realizados</span>
                 <span className="font-medium text-emerald-600 dark:text-emerald-400">
                   S/ {receipt.totalPayments.toFixed(2)}
                 </span>
               </div>
-              <div className="flex justify-between text-sm font-bold">
-                <span>Balance</span>
+              <div className="flex justify-between text-sm font-bold pt-1 border-t border-border/50 mt-1">
+                <span>TOTAL DEUDA</span>
                 <span
                   className={
-                    receipt.balance >= 0
+                    receipt.balance - receipt.carryForwardBalance >= 0
                       ? 'text-emerald-600 dark:text-emerald-400'
                       : 'text-red-600 dark:text-red-400'
                   }
                 >
-                  S/ {receipt.balance.toFixed(2)}
+                  S/ {Math.abs(receipt.balance - receipt.carryForwardBalance).toFixed(2)}
                 </span>
               </div>
             </div>
 
-            <div className="flex gap-2 pt-2">
-              {receipt.status === 'unpaid' && (
+            <div className="flex flex-wrap gap-2 pt-2">
+              {receipt.status === 'unpaid' && receipt.id && (
                 <button
-                  onClick={handleMarkAsPaid}
-                  disabled={markingPaid}
-                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-surface-raised disabled:text-on-surface-faint text-white text-sm font-medium rounded-xl shadow-sm transition-all duration-150 flex items-center justify-center gap-2"
+                  onClick={openPaymentModal}
+                  className="flex-1 min-w-[140px] px-3 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-medium rounded-xl shadow-sm transition-all duration-150 flex items-center justify-center gap-2"
                 >
-                  <Check size={16} />
-                  {markingPaid ? 'Marcando...' : 'Marcar como pagado'}
+                  <Wallet size={16} />
+                  Registrar Pago
                 </button>
               )}
 
+              {receipt.id &&
+                (receipt.pdfStatus === 'ready' ? (
+                  <button
+                    onClick={handleDownloadPdf}
+                    className="flex-1 px-3 py-2.5 border border-blue-600 dark:border-blue-500/60 text-blue-700 dark:text-blue-300 bg-transparent hover:bg-blue-50 dark:hover:bg-blue-900/20 text-sm font-medium rounded-xl transition-all duration-150 flex items-center justify-center gap-2"
+                  >
+                    <FileText size={16} />
+                    Descargar PDF
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleGeneratePdf}
+                    disabled={
+                      pdfLoading ||
+                      receipt.pdfStatus === 'queued' ||
+                      receipt.pdfStatus === 'rendering'
+                    }
+                    className="flex-1 px-3 py-2.5 border border-blue-600 dark:border-blue-500/60 text-blue-700 dark:text-blue-300 bg-transparent hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:border-border disabled:text-on-surface-faint disabled:bg-transparent text-sm font-medium rounded-xl transition-all duration-150 flex items-center justify-center gap-2"
+                  >
+                    <FileText size={16} />
+                    {pdfLoading ||
+                    receipt.pdfStatus === 'queued' ||
+                    receipt.pdfStatus === 'rendering'
+                      ? 'Generando PDF...'
+                      : receipt.pdfStatus === 'failed'
+                        ? 'Reintentar PDF'
+                        : 'Generar PDF'}
+                  </button>
+                ))}
+
               <button
                 onClick={handleSendWhatsApp}
-                className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-sm font-medium rounded-xl shadow-sm transition-all duration-150 flex items-center justify-center gap-2"
+                className="flex-1 px-3 py-2.5 border border-green-600 dark:border-green-500/60 text-green-700 dark:text-green-300 bg-transparent hover:bg-green-50 dark:hover:bg-green-900/20 text-sm font-medium rounded-xl transition-all duration-150 flex items-center justify-center gap-2"
               >
                 <Send size={16} />
                 Enviar por WhatsApp
               </button>
             </div>
+
+            {receipt.pdfGeneratedAt && receipt.pdfStatus === 'ready' && (
+              <p className="text-[11px] text-on-surface-muted mt-2">
+                Generado el{' '}
+                {new Date(receipt.pdfGeneratedAt).toLocaleString('es-PE', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </p>
+            )}
+            {receipt.pdfStatus === 'failed' && receipt.pdfError && (
+              <p className="text-[11px] text-red-600 dark:text-red-400 mt-2">
+                Error: {receipt.pdfError}
+              </p>
+            )}
+            {pdfTimedOut && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">
+                Tiempo agotado, intenta de nuevo.
+              </p>
+            )}
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={paymentModalOpen}
+        onClose={() => setPaymentModalOpen(false)}
+        title="Registrar Pago"
+      >
+        <form onSubmit={handleSubmitPayment} className="space-y-4">
+          {ledger && (
+            <div className="px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-700/40 text-[13px]">
+              <span className="text-blue-700 dark:text-blue-300 font-medium">
+                Saldo del contrato: S/{' '}
+                <span className={ledger.balance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>
+                  {ledger.balance.toFixed(2)}
+                </span>
+              </span>
+              {ledger.creditRemaining > 0 && (
+                <span className="text-blue-600 dark:text-blue-400 ml-2">
+                  (crédito: S/ {ledger.creditRemaining.toFixed(2)})
+                </span>
+              )}
+            </div>
+          )}
+          {ledger && receipt?.id && (
+            <div className="mt-1.5 px-3 py-2 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/40 dark:border-emerald-700/30 text-[12px] animate-fade-in">
+              {(() => {
+                const snap = ledger.receipts.find((lr) => lr.id === receipt.id);
+                if (snap && snap.appliedCredit > 0) {
+                  return (
+                    <div className="flex justify-between items-center text-emerald-700 dark:text-emerald-300">
+                      <span>Total del recibo: S/ {snap.totalDue.toFixed(2)}</span>
+                      <span className="font-medium">− S/ {snap.appliedCredit.toFixed(2)} crédito</span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+                Monto
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                placeholder="0.00"
+                required
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+                Fecha
+              </label>
+              <input
+                type="date"
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
+                max={new Date().toISOString().slice(0, 10)}
+                required
+                className={inputCls}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+              Metodo
+            </label>
+            <Dropdown
+              value={paymentMethod}
+              onChange={(v) => setPaymentMethod(v as LinkedPayment['method'])}
+              options={(
+                Object.entries(paymentMethodLabels) as Array<
+                  [LinkedPayment['method'], string]
+                >
+              ).map(([k, v]) => ({ value: k, label: v }))}
+            />
+          </div>
+          <div>
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+              Referencia (opcional)
+            </label>
+            <input
+              type="text"
+              value={paymentReference}
+              onChange={(e) => setPaymentReference(e.target.value)}
+              placeholder="N° voucher / operación"
+              maxLength={128}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+              Descripcion (opcional)
+            </label>
+            <input
+              type="text"
+              value={paymentDescription}
+              onChange={(e) => setPaymentDescription(e.target.value)}
+              className={inputCls}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={paymentSubmitting}
+            className={btnCls}
+          >
+            {paymentSubmitting ? 'Guardando...' : 'Registrar Pago'}
+          </button>
+        </form>
       </Modal>
     </div>
   );

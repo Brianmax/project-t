@@ -1,16 +1,26 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, Repository } from 'typeorm';
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
+import { DataSource, Repository } from 'typeorm';
 import { Contract } from '../contract/entities/contract.entity';
 import { Payment } from '../payment/entities/payment.entity';
 import { ExtraCharge } from '../extra-charge/entities/extra-charge.entity';
 import { ConsumptionService } from '../consumption/consumption.service';
 import { MeterType } from '../department-meter/entities/department-meter.entity';
-import { ReceiptEntity, ReceiptStatus } from './entities/receipt.entity';
+import { RECEIPT_PDF_QUEUE } from '../queue/queue.constants';
+import {
+  PdfStatus,
+  ReceiptEntity,
+  ReceiptStatus,
+} from './entities/receipt.entity';
+import { ContractLedgerService } from '../contract/contract-ledger.service';
 
 export interface ReceiptItem {
   description: string;
@@ -28,6 +38,7 @@ export interface Receipt {
   paidAt: string | null;
   paidBy: string | null;
   tenantName: string;
+  tenantDocumentId: string | null;
   departmentName: string;
   propertyAddress: string;
   period: string;
@@ -35,10 +46,18 @@ export interface Receipt {
   totalPayments: number;
   totalDue: number;
   balance: number;
+  carryForwardDetails: Array<{ period: string; balance: number }> | null;
+  carryForwardBalance: number;
+  pdfKey: string | null;
+  pdfGeneratedAt: string | null;
+  pdfStatus: PdfStatus;
+  pdfError: string | null;
 }
 
 @Injectable()
 export class ReceiptService {
+  private readonly logger = new Logger(ReceiptService.name);
+
   constructor(
     @InjectRepository(Contract)
     private readonly contractRepository: Repository<Contract>,
@@ -49,6 +68,11 @@ export class ReceiptService {
     @InjectRepository(ReceiptEntity)
     private readonly receiptRepository: Repository<ReceiptEntity>,
     private readonly consumptionService: ConsumptionService,
+    private readonly dataSource: DataSource,
+    private readonly ledgerService: ContractLedgerService,
+    @Optional()
+    @InjectQueue(RECEIPT_PDF_QUEUE)
+    private readonly pdfQueue?: Queue,
   ) {}
 
   async previewReceipt(
@@ -79,6 +103,10 @@ export class ReceiptService {
       status: ReceiptStatus.UNPAID,
       paidAt: null,
       paidBy: null,
+      pdfKey: null,
+      pdfGeneratedAt: null,
+      pdfStatus: 'idle',
+      pdfError: null,
     };
   }
 
@@ -101,7 +129,41 @@ export class ReceiptService {
       });
     }
 
-    // Always recalculate to get the latest extra charges and consumption
+    if (existing) {
+      const linkedCount = await this.paymentRepository.count({
+        where: { receiptId: existing.id },
+      });
+      if (linkedCount > 0) {
+        throw new ConflictException({
+          code: 'RECEIPT_HAS_PAYMENTS',
+          message: `Receipt for ${month}/${year} has ${linkedCount} linked payment(s); delete them before regenerating.`,
+        });
+      }
+    }
+
+    const contract = await this.contractRepository.findOne({
+      where: { id: contractId },
+      relations: ['department'],
+    });
+    if (!contract) {
+      throw new NotFoundException(`Contract with ID "${contractId}" not found`);
+    }
+
+    const missingMeterTypes =
+      await this.consumptionService.findMetersMissingReadingsForPeriod(
+        contract.department.id,
+        month,
+        year,
+        endDay,
+      );
+    if (missingMeterTypes.length > 0) {
+      throw new ConflictException({
+        code: 'READINGS_REQUIRED',
+        message: `No se puede generar recibo para ${month}/${year}: faltan lecturas de ${missingMeterTypes.join(', ')}.`,
+        missingMeterTypes,
+      });
+    }
+
     const calculated = await this.calculateReceipt(
       contractId,
       month,
@@ -112,10 +174,11 @@ export class ReceiptService {
     );
 
     if (existing) {
-      // Existing unpaid receipt — refresh fields, keep status UNPAID
+      const hadPdf = existing.pdfKey != null;
       existing.startDay = startDay ?? null;
       existing.endDay = endDay ?? null;
       existing.tenantName = calculated.tenantName;
+      existing.tenantDocumentId = calculated.tenantDocumentId;
       existing.departmentName = calculated.departmentName;
       existing.propertyAddress = calculated.propertyAddress;
       existing.period = calculated.period;
@@ -123,55 +186,63 @@ export class ReceiptService {
       existing.totalPayments = calculated.totalPayments;
       existing.totalDue = calculated.totalDue;
       existing.balance = calculated.balance;
-      const saved = await this.receiptRepository.save(existing);
+      existing.carryForwardDetails = calculated.carryForwardDetails;
+      const saved = await this.dataSource.transaction(async (manager) => {
+        const s = await manager.save(existing);
+        await this.ledgerService.recalculate(contractId, manager);
+        return s;
+      });
+
+      if (hadPdf) {
+        await this.enqueuePdfRegeneration(saved.id, saved.contractId);
+      }
+
       return this.toReceipt(saved);
     }
 
-    const saved = await this.receiptRepository.save(
-      this.receiptRepository.create({
-        ...calculated,
-        startDay: startDay ?? null,
-        endDay: endDay ?? null,
-        status: ReceiptStatus.UNPAID,
-      }),
-    );
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const s = await manager.save(
+        manager.create(ReceiptEntity, {
+          ...calculated,
+          startDay: startDay ?? null,
+          endDay: endDay ?? null,
+          status: ReceiptStatus.UNPAID,
+        }),
+      );
+      await this.ledgerService.recalculate(contractId, manager);
+      return s;
+    });
     return this.toReceipt(saved);
   }
 
-  async updateReceiptStatus(
+  private async enqueuePdfRegeneration(
+    receiptId: string,
     contractId: string,
-    month: number,
-    year: number,
-    status: ReceiptStatus,
-    actorUserId: string,
-  ): Promise<Receipt> {
-    const receipt = await this.receiptRepository.findOne({
-      where: { contractId, month, year },
-    });
-    if (!receipt) {
-      throw new NotFoundException(
-        `Issued receipt not found for contract ${contractId} (${month}/${year})`,
-      );
-    }
-
-    if (
-      receipt.status === ReceiptStatus.PAID &&
-      status === ReceiptStatus.UNPAID
-    ) {
-      throw new ConflictException({
-        code: 'RECEIPT_PAID_IMMUTABLE',
-        message: 'Paid receipts cannot be reverted to unpaid in this version.',
+  ): Promise<void> {
+    if (!this.pdfQueue) return;
+    try {
+      await this.receiptRepository.update(receiptId, {
+        pdfStatus: 'queued',
+        pdfError: null,
+      });
+      const job = await this.pdfQueue.add('render', { receiptId });
+      await this.receiptRepository.update(receiptId, {
+        pdfJobId: job.id ?? null,
+      });
+      this.logger.log({
+        operation: 'receipt-pdf.auto-regen-enqueued',
+        receiptId,
+        contractId,
+        jobId: job.id,
+      });
+    } catch (err) {
+      this.logger.warn({
+        operation: 'receipt-pdf.auto-regen-failed',
+        receiptId,
+        contractId,
+        error: err instanceof Error ? err.message : String(err),
       });
     }
-
-    if (status === ReceiptStatus.PAID && receipt.status !== ReceiptStatus.PAID) {
-      receipt.status = ReceiptStatus.PAID;
-      receipt.paidAt = new Date();
-      receipt.paidBy = actorUserId;
-    }
-
-    const saved = await this.receiptRepository.save(receipt);
-    return this.toReceipt(saved);
   }
 
   async findReceiptMonthsByContract(
@@ -203,7 +274,44 @@ export class ReceiptService {
     return receipts.map((r) => this.toReceipt(r));
   }
 
+  async findAllReceipts(departmentId?: string): Promise<Receipt[]> {
+    if (departmentId) {
+      // Find all contracts for this department
+      const contracts = await this.contractRepository.find({
+        where: { departmentId },
+        select: ['id'],
+      });
+      const contractIds = contracts.map((c) => c.id);
+
+      if (contractIds.length === 0) return [];
+
+      const receipts = await this.receiptRepository
+        .createQueryBuilder('r')
+        .where('r.contractId IN (:...contractIds)', { contractIds })
+        .orderBy('r.year', 'DESC')
+        .addOrderBy('r.month', 'DESC')
+        .getMany();
+
+      return receipts.map((r) => this.toReceipt(r));
+    }
+
+    const receipts = await this.receiptRepository.find({
+      order: {
+        year: 'DESC',
+        month: 'DESC',
+      },
+    });
+
+    return receipts.map((r) => this.toReceipt(r));
+  }
+
   private toReceipt(record: ReceiptEntity): Receipt {
+    const carryForwardDetails = record.carryForwardDetails ?? null;
+    const carryForwardBalance = (carryForwardDetails ?? []).reduce(
+      (sum, item) => sum + Number(item.balance),
+      0,
+    );
+
     return {
       id: record.id,
       contractId: record.contractId,
@@ -215,6 +323,7 @@ export class ReceiptService {
       paidAt: record.paidAt ? record.paidAt.toISOString() : null,
       paidBy: record.paidBy,
       tenantName: record.tenantName,
+      tenantDocumentId: record.tenantDocumentId,
       departmentName: record.departmentName,
       propertyAddress: record.propertyAddress,
       period: record.period,
@@ -225,6 +334,14 @@ export class ReceiptService {
       totalPayments: Number(record.totalPayments),
       totalDue: Number(record.totalDue),
       balance: Number(record.balance),
+      carryForwardDetails,
+      carryForwardBalance,
+      pdfKey: record.pdfKey,
+      pdfGeneratedAt: record.pdfGeneratedAt
+        ? record.pdfGeneratedAt.toISOString()
+        : null,
+      pdfStatus: record.pdfStatus,
+      pdfError: record.pdfError,
     };
   }
 
@@ -235,7 +352,19 @@ export class ReceiptService {
     startDay?: number,
     endDay?: number,
     prorateRent?: boolean,
-  ): Promise<Omit<Receipt, 'id' | 'status' | 'paidAt' | 'paidBy'>> {
+  ): Promise<
+    Omit<
+      Receipt,
+      | 'id'
+      | 'status'
+      | 'paidAt'
+      | 'paidBy'
+      | 'pdfKey'
+      | 'pdfGeneratedAt'
+      | 'pdfStatus'
+      | 'pdfError'
+    >
+  > {
     const contract = await this.contractRepository.findOne({
       where: { id: contractId },
       relations: ['tenant', 'department', 'department.property'],
@@ -246,16 +375,33 @@ export class ReceiptService {
     }
 
     const periodStart = new Date(year, month - 1, 1);
-    const periodEnd = new Date(year, month, 0);
 
-    const payments = await this.paymentRepository.find({
-      where: {
-        contractId: contract.id,
-        date: Between(periodStart, periodEnd),
-      },
-    });
+    // Calculate carry-forward details from previous months
+    const ledger = await this.ledgerService.computeLedger(contractId);
+    const carryForwardDetails: Array<{ period: string; balance: number }> = [];
 
-    // Use period-specific consumption instead of current consumption
+    for (const snap of ledger.receipts) {
+      // Only carry forward if the receipt period is strictly before the current one
+      const isPast =
+        snap.year < year || (snap.year === year && snap.month < month);
+
+      if (isPast && snap.remaining > 0) {
+        const snapPeriod = new Date(snap.year, snap.month - 1, 1).toLocaleString(
+          'es-PE',
+          { month: 'long', year: 'numeric' },
+        );
+        carryForwardDetails.push({
+          period: snapPeriod,
+          balance: snap.remaining,
+        });
+      }
+    }
+
+    const carryForwardBalance = carryForwardDetails.reduce(
+      (sum, item) => sum + item.balance,
+      0,
+    );
+
     const lightConsumptionData =
       await this.consumptionService.calculateConsumptionForPeriod(
         contract.department.id,
@@ -285,7 +431,6 @@ export class ReceiptService {
     };
 
     const receiptItems: ReceiptItem[] = [];
-    let totalPayments = 0;
 
     let rentAmount: number;
     let rentDescription: string;
@@ -294,10 +439,10 @@ export class ReceiptService {
       const daysInMonth = new Date(year, month, 0).getDate();
       const daysOccupied = endDay - effectiveStartDay + 1;
       rentAmount = (daysOccupied / daysInMonth) * Number(contract.rentAmount);
-      rentDescription = `Monthly Rent (${daysOccupied}/${daysInMonth} days)`;
+      rentDescription = `Alquiler mensual (${daysOccupied}/${daysInMonth} días)`;
     } else {
       rentAmount = Number(contract.rentAmount);
-      rentDescription = 'Monthly Rent';
+      rentDescription = 'Alquiler mensual';
     }
 
     let totalDue = rentAmount;
@@ -309,7 +454,7 @@ export class ReceiptService {
 
     if (lightConsumption.consumption > 0) {
       receiptItems.push({
-        description: `Electricity Consumption (${lightConsumption.consumption} units)`,
+        description: `Consumo de electricidad (${lightConsumption.consumption} unidades)`,
         amount: lightConsumption.cost,
       });
       totalDue += lightConsumption.cost;
@@ -317,7 +462,7 @@ export class ReceiptService {
 
     if (waterConsumption.consumption > 0) {
       receiptItems.push({
-        description: `Water Consumption (${waterConsumption.consumption} units)`,
+        description: `Consumo de agua (${waterConsumption.consumption} unidades)`,
         amount: waterConsumption.cost,
       });
       totalDue += waterConsumption.cost;
@@ -335,17 +480,7 @@ export class ReceiptService {
       totalDue += Number(extraCharge.amount);
     });
 
-    payments.forEach((payment) => {
-      receiptItems.push({
-        description: `Payment (${payment.type}) - ${payment.description || 'N/A'}`,
-        amount: -Number(payment.amount),
-      });
-      totalPayments += Number(payment.amount);
-    });
-
-    const balance = totalPayments - totalDue;
-
-    const monthName = periodStart.toLocaleString('en-US', {
+    const monthName = periodStart.toLocaleString('es-PE', {
       month: 'long',
       year: 'numeric',
     });
@@ -359,13 +494,16 @@ export class ReceiptService {
       month,
       year,
       tenantName: contract.tenant.name,
+      tenantDocumentId: contract.tenant.documentId ?? null,
       departmentName: contract.department.name,
       propertyAddress: contract.department.property.address,
       period,
       items: receiptItems,
-      totalPayments,
+      totalPayments: 0,
       totalDue,
-      balance,
+      balance: -totalDue,
+      carryForwardDetails,
+      carryForwardBalance,
     };
   }
 }

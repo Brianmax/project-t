@@ -13,6 +13,7 @@ import Contracts from './pages/Contracts';
 import Meters from './pages/Meters';
 import MeterReadings from './pages/MeterReadings';
 import Payments from './pages/Payments';
+import Receipts from './pages/Receipts';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import AdminUsers from './pages/admin/AdminUsers';
@@ -51,6 +52,7 @@ export default function App() {
               <Route path="tenants" element={<Tenants />} />
               <Route path="tenants/:id" element={<TenantDashboard />} />
               <Route path="contracts" element={<Contracts />} />
+              <Route path="receipts" element={<Receipts />} />
               <Route path="meters" element={<Meters />} />
               <Route path="readings" element={<MeterReadings />} />
               <Route path="payments" element={<Payments />} />

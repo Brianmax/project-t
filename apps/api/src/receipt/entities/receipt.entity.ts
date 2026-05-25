@@ -15,9 +15,14 @@ export enum ReceiptStatus {
   PAID = 'paid',
 }
 
+export type PdfStatus = 'idle' | 'queued' | 'rendering' | 'ready' | 'failed';
+
 @Entity()
 @Unique('uq_receipt_contract_period', ['contractId', 'month', 'year'])
 export class ReceiptEntity {
+  // `status`, `paidAt`, `paidBy`, `totalPayments`, `balance` are written only
+  // by ContractLedgerService.recalculate(). Do not write them from anywhere else.
+
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -43,6 +48,14 @@ export class ReceiptEntity {
   @Column({ type: 'varchar', length: 64 })
   tenantName: string;
 
+  @Column({
+    name: 'tenant_document_id',
+    type: 'varchar',
+    length: 32,
+    nullable: true,
+  })
+  tenantDocumentId: string | null;
+
   @Column({ type: 'varchar', length: 64 })
   departmentName: string;
 
@@ -64,6 +77,9 @@ export class ReceiptEntity {
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   balance: number;
 
+  @Column({ type: 'jsonb', nullable: true })
+  carryForwardDetails: Array<{ period: string; balance: number }> | null;
+
   @Column({
     type: 'enum',
     enum: ReceiptStatus,
@@ -76,6 +92,35 @@ export class ReceiptEntity {
 
   @Column({ name: 'paid_by', type: 'uuid', nullable: true })
   paidBy: string | null;
+
+  @Column({ name: 'pdf_key', type: 'varchar', length: 512, nullable: true })
+  pdfKey: string | null;
+
+  @Column({ name: 'pdf_generated_at', type: 'timestamptz', nullable: true })
+  pdfGeneratedAt: Date | null;
+
+  @Column({
+    name: 'pdf_content_type',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
+  pdfContentType: string | null;
+
+  @Column({
+    name: 'pdf_status',
+    type: 'varchar',
+    length: 16,
+    nullable: false,
+    default: 'idle',
+  })
+  pdfStatus: PdfStatus;
+
+  @Column({ name: 'pdf_error', type: 'text', nullable: true })
+  pdfError: string | null;
+
+  @Column({ name: 'pdf_job_id', type: 'varchar', length: 64, nullable: true })
+  pdfJobId: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

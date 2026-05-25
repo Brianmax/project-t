@@ -32,6 +32,10 @@ export class ConsumptionController {
     @Param('id') departmentId: string,
     @Query('month', ParseIntPipe) month: number,
     @Query('year', ParseIntPipe) year: number,
+    @Query('startDay', new ParseIntPipe({ optional: true }))
+    startDay?: number,
+    @Query('endDay', new ParseIntPipe({ optional: true }))
+    endDay?: number,
   ) {
     return Promise.all([
       this.consumptionService.calculateConsumptionForPeriod(
@@ -39,16 +43,37 @@ export class ConsumptionController {
         MeterType.LIGHT,
         month,
         year,
+        startDay,
+        endDay,
       ),
       this.consumptionService.calculateConsumptionForPeriod(
         departmentId,
         MeterType.WATER,
         month,
         year,
+        startDay,
+        endDay,
       ),
-    ]).then(([light, water]) => ({
-      light: { consumption: light.consumption, cost: light.cost },
-      water: { consumption: water.consumption, cost: water.cost },
+      this.consumptionService.findMetersMissingReadingsForPeriod(
+        departmentId,
+        month,
+        year,
+        endDay,
+      ),
+    ]).then(([light, water, missingMeterTypes]) => ({
+      light: {
+        consumption: light.consumption,
+        cost: light.cost,
+        currentReading: light.currentReading,
+        previousReading: light.previousReading,
+      },
+      water: {
+        consumption: water.consumption,
+        cost: water.cost,
+        currentReading: water.currentReading,
+        previousReading: water.previousReading,
+      },
+      missingMeterTypes,
     }));
   }
 }

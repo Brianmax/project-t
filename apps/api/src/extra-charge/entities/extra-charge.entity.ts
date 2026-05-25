@@ -31,6 +31,7 @@ export class ExtraCharge {
   year: number;
 
   @ManyToOne(() => Contract, (contract) => contract.id)
+  @JoinColumn({ name: 'contract_id' })
   contract: Contract;
 
   @Column({ name: 'contract_id', type: 'uuid' })

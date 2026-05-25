@@ -3,6 +3,7 @@ import { ShieldCheck } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { cardCls, btnPrimaryCls, btnDangerCls } from '../../lib/styles';
 import { showSuccess, showError } from '../../lib/toast';
+import { formatDate } from '../../lib/utils';
 import PageHeader from '../../components/PageHeader';
 import { PageSkeleton } from '../../components/Skeleton';
 
@@ -111,11 +112,7 @@ export default function AdminUsers() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-on-surface-muted hidden sm:table-cell">
-                    {new Date(user.createdAt).toLocaleDateString('es', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric',
-                    })}
+                    {formatDate(user.createdAt)}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">

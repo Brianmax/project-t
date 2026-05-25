@@ -16,9 +16,6 @@ import { ContractService } from './contract.service';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
 import { ReceiptService, Receipt } from '../receipt/receipt.service';
-import { UpdateReceiptStatusDto } from './dto/update-receipt-status.dto';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import type { JwtPayload } from '../auth/decorators/current-user.decorator';
 import {
   ContractSettlementService,
   SettlementResult,
@@ -28,6 +25,10 @@ import {
   TerminationResult,
 } from '../contract-termination/contract-termination.service';
 import { CreateContractTerminationDto } from '../contract-termination/dto/create-contract-termination.dto';
+import {
+  ContractLedgerService,
+  LedgerSnapshot,
+} from './contract-ledger.service';
 
 @Controller('contracts')
 export class ContractController {
@@ -36,11 +37,19 @@ export class ContractController {
     private readonly receiptService: ReceiptService,
     private readonly contractSettlementService: ContractSettlementService,
     private readonly contractTerminationService: ContractTerminationService,
+    private readonly ledgerService: ContractLedgerService,
   ) {}
 
   @Get('receipts/unpaid')
   findUnpaidReceipts(): Promise<Receipt[]> {
     return this.receiptService.findUnpaidReceipts();
+  }
+
+  @Get('receipts')
+  findAllReceipts(
+    @Query('departmentId') departmentId?: string,
+  ): Promise<Receipt[]> {
+    return this.receiptService.findAllReceipts(departmentId);
   }
 
   @Post()
@@ -54,6 +63,11 @@ export class ContractController {
     @Query('departmentId') departmentId?: string,
   ) {
     return this.contractService.findAll(tenantId, departmentId);
+  }
+
+  @Get(':id/ledger')
+  getLedger(@Param('id') contractId: string): Promise<LedgerSnapshot> {
+    return this.ledgerService.computeLedger(contractId);
   }
 
   @Get(':id')
@@ -119,23 +133,6 @@ export class ContractController {
       startDay,
       endDay,
       prorateRent,
-    );
-  }
-
-  @Patch(':id/receipts/status')
-  updateReceiptStatus(
-    @Param('id') contractId: string,
-    @Query('month', ParseIntPipe) month: number,
-    @Query('year', ParseIntPipe) year: number,
-    @Body() updateReceiptStatusDto: UpdateReceiptStatusDto,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<Receipt> {
-    return this.receiptService.updateReceiptStatus(
-      contractId,
-      month,
-      year,
-      updateReceiptStatusDto.status,
-      user.sub,
     );
   }
 

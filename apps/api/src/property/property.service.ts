@@ -10,7 +10,6 @@ import { Department } from '../department/entities/department.entity';
 import { ExtraCharge } from '../extra-charge/entities/extra-charge.entity';
 import { Payment } from '../payment/entities/payment.entity';
 import { DepartmentMeter } from '../department-meter/entities/department-meter.entity';
-import { PropertyMeter } from '../property-meter/entities/property-meter.entity';
 
 @Injectable()
 export class PropertyService {
@@ -85,7 +84,6 @@ export class PropertyService {
         await manager.delete(Department, { id: In(departmentIds) });
       }
 
-      await manager.delete(PropertyMeter, { propertyId: id });
       await manager.delete(Property, { id });
 
       if (relatedTenantIds.length > 0) {

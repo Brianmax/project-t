@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Phase 06 — Payment Ledger Workflow</title>
+    <style>
+      :root {
+        --bg: #0b0e14;
+        --panel: #121821;
+        --panel-2: #1a2331;
+        --border: #2a3346;
+        --ink: #d7dbe2;
+        --ink-soft: #9aa3b3;
+        --ink-faint: #6a7384;
+        --accent: #6ea0ff;
+        --good: #4ec99c;
+        --warn: #e0b145;
+        --bad: #e07474;
+        --credit: #b56af7;
+        --mono: ui-monospace, "SF Mono", Menlo, monospace;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0; padding: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .wrap {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 48px 24px 96px;
+      }
+      header {
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 24px;
+        margin-bottom: 32px;
+      }
+      h1 {
+        font-size: 26px;
+        font-weight: 600;
+        margin: 0 0 6px;
+      }
+      .subtitle {
+        color: var(--ink-soft);
+        font-size: 14px;
+      }
+      h2 {
+        font-size: 20px;
+        font-weight: 600;
+        margin: 48px 0 12px;
+        border-left: 3px solid var(--accent);
+        padding-left: 10px;
+      }
+      h3 {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 24px 0 8px;
+        color: var(--ink);
+      }
+      p, li { color: var(--ink-soft); }
+      code {
+        font-family: var(--mono);
+        font-size: 13px;
+        background: var(--panel-2);
+        padding: 1px 6px;
+        border-radius: 4px;
+        color: var(--ink);
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        margin: 12px 0;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 16px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: var(--mono);
+        font-size: 13px;
+      }
+      th, td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+      }
+      th {
+        color: var(--ink-faint);
+        font-weight: 500;
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.05em;
+      }
+      td.num { text-align: right; }
+      .pill {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 999px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .pill.paid     { background: rgba(78,201,156,0.15); color: var(--good); }
+      .pill.unpaid   { background: rgba(224,177,69,0.15); color: var(--warn); }
+      .pill.credit   { background: rgba(181,106,247,0.15); color: var(--credit); }
+      .pill.debt     { background: rgba(224,116,116,0.15); color: var(--bad); }
+      .scenario {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 22px;
+        margin: 16px 0;
+      }
+      .scenario h3 { margin-top: 0; }
+      .ledger-walk {
+        font-family: var(--mono);
+        font-size: 13px;
+        background: var(--panel-2);
+        border-radius: 6px;
+        padding: 14px 16px;
+        margin: 10px 0;
+        white-space: pre-wrap;
+        line-height: 1.7;
+        color: var(--ink);
+      }
+      .ledger-walk .num { color: var(--accent); }
+      .ledger-walk .good { color: var(--good); }
+      .ledger-walk .warn { color: var(--warn); }
+      .ledger-walk .credit { color: var(--credit); }
+      .ledger-walk .dim { color: var(--ink-faint); }
+      .fifo-diagram {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 8px 12px;
+        align-items: center;
+        font-family: var(--mono);
+        font-size: 13px;
+        margin: 16px 0;
+      }
+      .fifo-diagram .label {
+        color: var(--ink-faint);
+        text-align: right;
+      }
+      .fifo-diagram .receipt {
+        background: var(--panel-2);
+        border-radius: 6px;
+        padding: 10px 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .fifo-diagram .arrow { color: var(--accent); font-size: 18px; }
+      .api-table .removed { color: var(--bad); text-decoration: line-through; }
+      .api-table .kept    { color: var(--ink); }
+      .api-table .new     { color: var(--good); }
+      ul { padding-left: 22px; }
+      .footnote {
+        font-size: 12px;
+        color: var(--ink-faint);
+        margin-top: 8px;
+      }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>Phase 06 — Payment Ledger Workflow</h1>
+        <div class="subtitle">
+          Single payment kind. Tenant credit balance. FIFO application. Visual companion to
+          <code>.planning/phases/06-payment-ledger-refactor/06-PLAN.md</code>.
+        </div>
+      </header>
+
+      <h2>The model in one paragraph</h2>
+      <div class="panel">
+        <p>
+          Each contract has a running ledger. Payments add to it (refunds subtract). Issued receipts
+          consume it in FIFO order — oldest month first. A receipt becomes
+          <span class="pill paid">paid</span> when its <code>totalDue</code> has been fully covered
+          by accumulated credit; otherwise it stays <span class="pill unpaid">unpaid</span>.
+          Surplus credit not consumed by any receipt is the tenant's positive
+          <span class="pill credit">balance</span>, which automatically applies to future receipts.
+          The contract's <code>advancePayment</code> and <code>guaranteeDeposit</code> fields are
+          deposits — they live on the contract and never flow through this ledger.
+        </p>
+      </div>
+
+      <h2>Three scenarios as ledger walks</h2>
+
+      <div class="scenario">
+        <h3>Scenario 1 — exact payment</h3>
+        <p>Tenant has one receipt outstanding (S/ 1400) and pays S/ 1400.</p>
+        <div class="ledger-walk"><span class="dim">Initial:</span>  totalPaid=<span class="num">0</span>     totalBilled=<span class="num">1400</span>   balance=<span class="warn">-1400</span>
+<span class="dim">Action:</span>   record Payment(amount=<span class="num">1400</span>)
+<span class="dim">Recalc:</span>   running=<span class="num">1400</span>
+            receipt[2026-05]: due=<span class="num">1400</span>  applied=<span class="num">1400</span>  remaining=<span class="num">0</span>  → <span class="good">PAID</span>
+            creditRemaining=<span class="num">0</span>
+<span class="dim">Final:</span>    balance=<span class="num">0</span>     receipt PAID</div>
+      </div>
+
+      <div class="scenario">
+        <h3>Scenario 2 — partial payment</h3>
+        <p>Same receipt (S/ 1400). Tenant pays S/ 700.</p>
+        <div class="ledger-walk"><span class="dim">Initial:</span>  totalPaid=<span class="num">0</span>     totalBilled=<span class="num">1400</span>   balance=<span class="warn">-1400</span>
+<span class="dim">Action:</span>   record Payment(amount=<span class="num">700</span>)
+<span class="dim">Recalc:</span>   running=<span class="num">700</span>
+            receipt[2026-05]: due=<span class="num">1400</span>  applied=<span class="num">700</span>   remaining=<span class="num">700</span>  → <span class="warn">UNPAID</span>
+            creditRemaining=<span class="num">0</span>
+<span class="dim">Final:</span>    balance=<span class="warn">-700</span>  receipt UNPAID (700 of 1400 covered)</div>
+        <p class="footnote">
+          The receipt's stored <code>totalPayments</code> = 700, <code>balance</code> = −700 after the projector runs.
+          The receipt stays unpaid; no "partial" status exists.
+        </p>
+      </div>
+
+      <div class="scenario">
+        <h3>Scenario 3 — overpayment creates credit</h3>
+        <p>Same receipt (S/ 1400). Tenant pays S/ 1500. Then, next month, a new S/ 1400 receipt is issued and the tenant pays only S/ 1300.</p>
+        <div class="ledger-walk"><span class="dim">Step A — overpayment</span>
+<span class="dim">Initial:</span>  totalPaid=<span class="num">0</span>     totalBilled=<span class="num">1400</span>   balance=<span class="warn">-1400</span>
+<span class="dim">Action:</span>   record Payment(amount=<span class="num">1500</span>)
+<span class="dim">Recalc:</span>   running=<span class="num">1500</span>
+            receipt[2026-05]: due=<span class="num">1400</span>  applied=<span class="num">1400</span>  remaining=<span class="num">0</span>  → <span class="good">PAID</span>
+            creditRemaining=<span class="num">100</span>
+<span class="dim">After A:</span>  balance=<span class="credit">+100</span>  receipt PAID, surplus credit 100
+
+<span class="dim">Step B — next month, partial covers via credit</span>
+<span class="dim">Issue:</span>   receipt[2026-06]: due=<span class="num">1400</span>
+<span class="dim">Initial:</span>  totalPaid=<span class="num">1500</span>  totalBilled=<span class="num">2800</span>   balance=<span class="warn">-1300</span>
+<span class="dim">Action:</span>   record Payment(amount=<span class="num">1300</span>)
+<span class="dim">Recalc:</span>   running=<span class="num">2800</span>
+            receipt[2026-05]: applied=<span class="num">1400</span>  → <span class="good">PAID</span>
+            receipt[2026-06]: applied=<span class="num">1400</span>  → <span class="good">PAID</span>   (1300 fresh + 100 carry)
+            creditRemaining=<span class="num">0</span>
+<span class="dim">Final:</span>    balance=<span class="num">0</span>     both receipts PAID</div>
+      </div>
+
+      <h2>FIFO application order</h2>
+      <p>
+        When credit is applied, the receipt list is walked oldest-first:
+        <code>ORDER BY year ASC, month ASC, createdAt ASC</code>. The operator does not choose
+        which receipt a payment lands on; the ledger does it deterministically.
+      </p>
+      <div class="panel">
+        <div class="fifo-diagram">
+          <div class="label">running = 2000</div>
+          <div class="receipt">receipt 2026-03 · due 1400 · applied 1400 · <span class="pill paid">paid</span></div>
+          <div class="arrow">→</div>
+
+          <div class="label">running = 600</div>
+          <div class="receipt">receipt 2026-04 · due 1400 · applied 600 · <span class="pill unpaid">unpaid</span></div>
+          <div class="arrow">→</div>
+
+          <div class="label">running = 0</div>
+          <div class="receipt">receipt 2026-05 · due 1400 · applied 0 · <span class="pill unpaid">unpaid</span></div>
+          <div class="arrow"></div>
+        </div>
+        <p class="footnote">
+          A tenant who has S/ 2000 in payments and three S/ 1400 receipts pays March in full, partially
+          covers April, and contributes nothing to May. No partial status — the receipt is either fully
+          covered or it is unpaid.
+        </p>
+      </div>
+
+      <h2>What deletion does</h2>
+      <div class="panel">
+        <p>
+          When a payment is deleted, <code>recalculate()</code> runs again with the new payment set.
+          Receipts that were only paid because of that payment flip back to
+          <span class="pill unpaid">unpaid</span>, and their <code>paidAt</code> / <code>paidBy</code>
+          audit columns are cleared. This is the same deterministic walk — nothing about deletion
+          is special-cased.
+        </p>
+        <div class="ledger-walk"><span class="dim">Before:</span>  payments = [P1=<span class="num">1500</span>]      receipt[2026-05] PAID, credit=<span class="num">100</span>
+<span class="dim">Action:</span>  delete P1
+<span class="dim">Recalc:</span>  running=<span class="num">0</span>
+           receipt[2026-05]: applied=<span class="num">0</span>  remaining=<span class="num">1400</span>  → <span class="warn">UNPAID</span>
+           paidAt = NULL, paidBy = NULL
+<span class="dim">After:</span>   balance=<span class="warn">-1400</span>  receipt UNPAID</div>
+      </div>
+
+      <h2>Entity relationships (after the refactor)</h2>
+      <div class="panel">
+        <div class="ledger-walk">                                                  ┌────────────────┐
+                                                  │   Tenant       │
+                                                  └───────┬────────┘
+                                                          │ 1
+                                                          ▼ *
+                          ┌──────────────────┐    ┌──────────────────┐
+                          │ Department       │◄───┤ Contract         │
+                          └──────────────────┘ *  │  - rentAmount    │
+                                                  │  - advancePayment│  ← deposits, untouched
+                                                  │  - guaranteeDep. │  ← deposits, untouched
+                                                  └────┬────┬────────┘
+                                                       │    │
+                                              ┌────────┘    └─────────┐
+                                              │ 1                     │ 1
+                                              ▼ *                     ▼ *
+                                  ┌──────────────────┐    ┌───────────────────────┐
+                                  │ Payment          │    │ ReceiptEntity         │
+                                  │  - amount        │    │  - totalDue (snapshot)│
+                                  │  - date          │    │  - totalPayments  ←┐  │
+                                  │  - method        │    │  - balance        ←┤  │  written
+                                  │  - description   │    │  - status         ←┤  │  ONLY by
+                                  │  - reference     │    │  - paidAt / paidBy←┘  │  ledger
+                                  │  - receiptId? (audit hint)                    │  recalc()
+                                  └──────────────────┘    └───────────────────────┘
+
+  Removed: PaymentType enum, PaymentService.recomputeReceipt, updateReceiptStatus endpoint.</div>
+      </div>
+
+      <h2>API surface — before / after</h2>
+      <div class="panel api-table">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:42%">Route</th>
+              <th style="width:18%">Status</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>POST /payments</code></td>
+              <td><span class="kept">kept</span></td>
+              <td>DTO drops <code>type</code>. Body now: <code>{amount, date, method, contractId, receiptId?, reference?, description?}</code></td>
+            </tr>
+            <tr>
+              <td><code>PATCH /payments/:id</code></td>
+              <td><span class="kept">kept</span></td>
+              <td>Same DTO change. Recalculates both contracts if <code>contractId</code> moves.</td>
+            </tr>
+            <tr>
+              <td><code>DELETE /payments/:id</code></td>
+              <td><span class="kept">kept</span></td>
+              <td>Triggers recalc → can flip receipts back to unpaid.</td>
+            </tr>
+            <tr>
+              <td><code>GET /payments?contractId&amp;receiptId</code></td>
+              <td><span class="kept">kept</span></td>
+              <td>Response loses the <code>type</code> field.</td>
+            </tr>
+            <tr>
+              <td><code>GET /receipts/:receiptId/payments</code></td>
+              <td><span class="kept">kept</span></td>
+              <td>Still works as a per-receipt list (audit hint).</td>
+            </tr>
+            <tr>
+              <td><code>GET /contracts/:id/receipts?month&amp;year</code></td>
+              <td><span class="kept">kept</span></td>
+              <td>Preview reads from ledger snapshot, not stored receipt totals.</td>
+            </tr>
+            <tr>
+              <td><code>POST /contracts/:id/receipts</code></td>
+              <td><span class="kept">kept</span></td>
+              <td>Persists <code>totalDue</code> only. Ledger projector fills the rest.</td>
+            </tr>
+            <tr>
+              <td><code>GET /contracts/receipts/unpaid</code></td>
+              <td><span class="kept">kept</span></td>
+              <td>Filters on the projector-maintained <code>status</code> column.</td>
+            </tr>
+            <tr>
+              <td><code>GET /contracts/:id/ledger</code></td>
+              <td><span class="new">NEW</span></td>
+              <td>Returns the full <code>LedgerSnapshot</code>. Drives modal pre-fill and the "saldo del contrato" display.</td>
+            </tr>
+            <tr>
+              <td><code>PATCH /contracts/:id/receipts/status</code></td>
+              <td><span class="removed">removed</span></td>
+              <td>Manual "Marcar como pagado" is gone. To mark paid, record a payment.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Operator mental model (one screen for the team)</h2>
+      <div class="panel">
+        <ul>
+          <li><strong>Recording a payment is the only way to mark a receipt as paid.</strong> No status toggle.</li>
+          <li><strong>The system decides where the money goes</strong>: oldest unpaid receipt first, surplus becomes credit.</li>
+          <li><strong>Overpayment is safe</strong>: extra credit sits on the contract and applies to the next month automatically.</li>
+          <li><strong>Refunds are negative payments</strong> with the same form, no special button.</li>
+          <li><strong>Deleting a payment is honest</strong>: receipts that were only paid because of it become unpaid again. The audit trail (<code>paidAt</code> / <code>paidBy</code>) is cleared on the same write.</li>
+          <li><strong>Deposits (anticipo, garantía) stay on the contract row</strong> — they are not part of the running balance.</li>
+        </ul>
+      </div>
+
+      <h2>Related tickets</h2>
+      <div class="panel">
+        <ul>
+          <li>Parent: <a href="https://linear.app/tenant-aqp/issue/TEN-18">TEN-18</a> — Phase 06 epic.</li>
+          <li><a href="https://linear.app/tenant-aqp/issue/TEN-19">TEN-19</a> · 06.1 Schema: drop PaymentType.</li>
+          <li><a href="https://linear.app/tenant-aqp/issue/TEN-20">TEN-20</a> · 06.2 <code>computeLedger</code> + <code>GET /contracts/:id/ledger</code>.</li>
+          <li><a href="https://linear.app/tenant-aqp/issue/TEN-21">TEN-21</a> · 06.3 Receipt projector (<code>recalculate</code>).</li>
+          <li><a href="https://linear.app/tenant-aqp/issue/TEN-22">TEN-22</a> · 06.4 Wire recalculate into payment writes &amp; receipt issuance; remove "Marcar como pagado".</li>
+          <li><a href="https://linear.app/tenant-aqp/issue/TEN-23">TEN-23</a> · 06.5 Migration script + deletion semantics test + rollback runbook.</li>
+        </ul>
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
-import { FileText, Calendar, DollarSign, Receipt, Scale } from 'lucide-react';
-import { apiFetch, apiPost } from '../lib/api';
+import {
+  FileText,
+  Calendar,
+  DollarSign,
+  Receipt,
+  Scale,
+  Pencil,
+} from 'lucide-react';
+import { apiFetch, apiPatch, apiPost } from '../lib/api';
 import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
 import { PageSkeleton } from '../components/Skeleton';
@@ -8,6 +15,7 @@ import Modal from '../components/Modal';
 import { inputCls, btnCls } from '../lib/styles';
 import DatePicker from '../components/DatePicker';
 import { showSuccess, showError } from '../lib/toast';
+import { formatDate } from '../lib/utils';
 
 interface Tenant {
   id: string;
@@ -20,17 +28,21 @@ interface Property {
 interface Department {
   id: string;
   name: string;
-  property: Property;
+  property?: Property;
 }
 interface Contract {
   id: string;
   startDate: string;
   endDate: string;
-  rentAmount: number;
-  advancePayment: number;
-  guaranteeDeposit: number;
+  rentAmount: number | string;
+  advancePayment: number | string;
+  guaranteeDeposit: number | string;
   tenant: Tenant;
   department: Department;
+  balance?: number;
+}
+interface LedgerSnapshot {
+  balance: number;
 }
 interface ReceiptItem {
   description: string;
@@ -73,6 +85,16 @@ export default function Contracts() {
   const [tenantId, setTenantId] = useState('');
   const [departmentId, setDepartmentId] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingContract, setEditingContract] = useState<Contract | null>(
+    null,
+  );
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editEndDate, setEditEndDate] = useState('');
+  const [editRentAmount, setEditRentAmount] = useState('');
+  const [editAdvance, setEditAdvance] = useState('');
+  const [editGuarantee, setEditGuarantee] = useState('');
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   const [receiptModal, setReceiptModal] = useState(false);
   const [settlementModal, setSettlementModal] = useState(false);
@@ -98,10 +120,24 @@ export default function Contracts() {
       apiFetch<Tenant[]>('/tenants'),
       apiFetch<Department[]>('/departments'),
     ])
-      .then(([c, t, d]) => {
-        setContracts(c);
+      .then(async ([c, t, d]) => {
         setTenants(t);
         setDepartments(d);
+
+        // Fetch balance for each contract
+        const contractsWithBalance = await Promise.all(
+          c.map(async (contract) => {
+            try {
+              const ledger = await apiFetch<LedgerSnapshot>(
+                `/contracts/${contract.id}/ledger`,
+              );
+              return { ...contract, balance: ledger.balance };
+            } catch {
+              return contract;
+            }
+          }),
+        );
+        setContracts(contractsWithBalance);
       })
       .catch(() => showError('No se pudieron cargar los datos'))
       .finally(() => setLoading(false));
@@ -139,6 +175,54 @@ export default function Contracts() {
     }
   };
 
+  const openEditModal = (contract: Contract) => {
+    setEditingContract(contract);
+    setEditStartDate(contract.startDate.slice(0, 10));
+    setEditEndDate(contract.endDate.slice(0, 10));
+    setEditRentAmount(String(contract.rentAmount));
+    setEditAdvance(String(contract.advancePayment));
+    setEditGuarantee(String(contract.guaranteeDeposit));
+    setEditModalOpen(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (
+      !editingContract ||
+      !editStartDate ||
+      !editEndDate ||
+      !editRentAmount
+    ) {
+      return;
+    }
+
+    setEditSubmitting(true);
+    try {
+      const updated = await apiPatch<Contract>(
+        `/contracts/${editingContract.id}`,
+        {
+          startDate: editStartDate,
+          endDate: editEndDate,
+          rentAmount: Number(editRentAmount),
+          advancePayment: Number(editAdvance) || 0,
+          guaranteeDeposit: Number(editGuarantee) || 0,
+        },
+      );
+      setContracts((prev) =>
+        prev.map((contract) =>
+          contract.id === updated.id ? { ...contract, ...updated } : contract,
+        ),
+      );
+      setEditModalOpen(false);
+      setEditingContract(null);
+      showSuccess('Contrato actualizado exitosamente');
+    } catch {
+      showError('Error al actualizar contrato');
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
   const handleGenerateReceipt = async () => {
     if (!selectedContract) return;
     setModalLoading(true);
@@ -169,12 +253,8 @@ export default function Contracts() {
     }
   };
 
-  const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString('es-PE', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
+  const formatMoney = (amount: number | string) =>
+    Number(amount || 0).toFixed(2);
 
   if (loading) return <PageSkeleton />;
 
@@ -205,6 +285,15 @@ export default function Contracts() {
                 <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 ring-1 ring-amber-100 dark:ring-amber-800/40">
                   Contrato #{c.id}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => openEditModal(c)}
+                  className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-on-surface-faint hover:text-on-surface hover:bg-surface-raised active:scale-95 transition-all duration-150"
+                  aria-label="Editar contrato"
+                  title="Editar contrato"
+                >
+                  <Pencil size={15} />
+                </button>
               </div>
               <h3 className="font-semibold text-on-surface">
                 {c.tenant?.name}
@@ -224,12 +313,24 @@ export default function Contracts() {
                 </div>
                 <div className="flex items-center gap-1.5 text-on-surface-medium">
                   <DollarSign size={14} className="text-on-surface-faint" />
-                  S/ {c.rentAmount.toFixed(2)}
+                  S/ {formatMoney(c.rentAmount)}
                 </div>
                 <div className="flex items-center gap-1.5 text-on-surface-medium">
                   <DollarSign size={14} className="text-on-surface-faint" />
-                  Garantia: S/ {c.guaranteeDeposit.toFixed(2)}
+                  Garantia: S/ {formatMoney(c.guaranteeDeposit)}
                 </div>
+                {c.balance !== undefined && (
+                  <div className="col-span-2 mt-1 p-2 rounded-lg bg-surface-alt ring-1 ring-border-light flex justify-between items-center">
+                    <span className="text-xs font-medium text-on-surface-muted">
+                      Saldo:
+                    </span>
+                    <span
+                      className={`font-bold ${c.balance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}
+                    >
+                      S/ {formatMoney(c.balance)}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-2 mt-auto pt-4 border-t border-border-light mt-4">
@@ -374,6 +475,95 @@ export default function Contracts() {
           </div>
           <button type="submit" disabled={submitting} className={btnCls}>
             {submitting ? 'Guardando...' : 'Crear Contrato'}
+          </button>
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={editModalOpen}
+        onClose={() => {
+          setEditModalOpen(false);
+          setEditingContract(null);
+        }}
+        title={`Editar Contrato #${editingContract?.id ?? ''}`}
+      >
+        <form onSubmit={handleEditSubmit} className="space-y-4">
+          <div className="pb-3 border-b border-border-light">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-faint">
+              Fechas del contrato
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+                Fecha Inicio
+              </label>
+              <DatePicker
+                value={editStartDate}
+                onChange={setEditStartDate}
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+                Fecha Fin
+              </label>
+              <DatePicker
+                value={editEndDate}
+                onChange={setEditEndDate}
+                required
+              />
+            </div>
+          </div>
+          <div className="pb-3 border-b border-border-light">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-faint">
+              Montos
+            </span>
+          </div>
+          <div>
+            <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+              Renta Mensual
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              value={editRentAmount}
+              onChange={(e) => setEditRentAmount(e.target.value)}
+              placeholder="1500.00"
+              required
+              className={inputCls}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+                Adelanto
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={editAdvance}
+                onChange={(e) => setEditAdvance(e.target.value)}
+                placeholder="0.00"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+                Garantia
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={editGuarantee}
+                onChange={(e) => setEditGuarantee(e.target.value)}
+                placeholder="0.00"
+                className={inputCls}
+              />
+            </div>
+          </div>
+          <button type="submit" disabled={editSubmitting} className={btnCls}>
+            {editSubmitting ? 'Guardando...' : 'Guardar Cambios'}
           </button>
         </form>
       </Modal>

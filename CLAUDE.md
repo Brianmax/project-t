@@ -19,6 +19,13 @@ PropManager - A property management system for managing rental properties, tenan
 # Install dependencies (from root)
 npm install
 
+# Start dev infrastructure (Postgres + MinIO + Redis)
+docker compose up -d
+# - Postgres:    localhost:5432
+# - MinIO API:   localhost:9000   (S3 endpoint for the API)
+# - MinIO web:   http://localhost:9001 (login: minioadmin / minioadmin)
+# - Redis:       localhost:6379   (BullMQ queue backend)
+
 # Start all apps in development mode
 npm run dev
 

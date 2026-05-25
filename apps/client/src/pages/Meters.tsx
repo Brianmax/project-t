@@ -20,10 +20,6 @@ interface Department {
   id: string;
   name: string;
 }
-interface Property {
-  id: string;
-  name: string;
-}
 
 interface DepartmentMeter {
   id: string;
@@ -31,20 +27,9 @@ interface DepartmentMeter {
   department: Department;
 }
 
-interface PropertyMeter {
-  id: string;
-  meterType: 'light' | 'water';
-  property: Property;
-}
-
-type Tab = 'department' | 'property';
-
 export default function Meters() {
-  const [tab, setTab] = useState<Tab>('department');
   const [deptMeters, setDeptMeters] = useState<DepartmentMeter[]>([]);
-  const [propMeters, setPropMeters] = useState<PropertyMeter[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -55,15 +40,11 @@ export default function Meters() {
   useEffect(() => {
     Promise.all([
       apiFetch<DepartmentMeter[]>('/department-meters'),
-      apiFetch<PropertyMeter[]>('/property-meters'),
       apiFetch<Department[]>('/departments'),
-      apiFetch<Property[]>('/properties'),
     ])
-      .then(([dm, pm, d, p]) => {
+      .then(([dm, d]) => {
         setDeptMeters(dm);
-        setPropMeters(pm);
         setDepartments(d);
-        setProperties(p);
       })
       .catch(() => showError('No se pudieron cargar los medidores'))
       .finally(() => setLoading(false));
@@ -74,19 +55,11 @@ export default function Meters() {
     if (!selectedId) return;
     setSubmitting(true);
     try {
-      if (tab === 'department') {
-        const added = await apiPost<DepartmentMeter>('/department-meters', {
-          meterType,
-          departmentId: selectedId,
-        });
-        setDeptMeters((prev) => [...prev, added]);
-      } else {
-        const added = await apiPost<PropertyMeter>('/property-meters', {
-          meterType,
-          propertyId: selectedId,
-        });
-        setPropMeters((prev) => [...prev, added]);
-      }
+      const added = await apiPost<DepartmentMeter>('/department-meters', {
+        meterType,
+        departmentId: selectedId,
+      });
+      setDeptMeters((prev) => [...prev, added]);
       setSelectedId('');
       setModalOpen(false);
       showSuccess('Medidor agregado exitosamente');
@@ -106,45 +79,21 @@ export default function Meters() {
 
   if (loading) return <PageSkeleton />;
 
-  const meters = tab === 'department' ? deptMeters : propMeters;
   return (
     <div className="animate-fade-in">
       <PageHeader
         icon={Gauge}
         title="Medidores"
-        subtitle={`${deptMeters.length + propMeters.length} medidores en total`}
+        subtitle={`${deptMeters.length} medidores en total`}
         onAdd={() => setModalOpen(true)}
         addLabel="Nuevo Medidor"
       />
 
-      <div className="flex gap-1 bg-surface-raised p-1 rounded-xl w-full sm:w-fit mb-6">
-        <button
-          onClick={() => setTab('department')}
-          className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-            tab === 'department'
-              ? 'bg-surface text-on-surface shadow-sm ring-1 ring-black/[0.04]'
-              : 'text-on-surface-muted hover:text-on-surface-medium'
-          }`}
-        >
-          Departamento ({deptMeters.length})
-        </button>
-        <button
-          onClick={() => setTab('property')}
-          className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-            tab === 'property'
-              ? 'bg-surface text-on-surface shadow-sm ring-1 ring-black/[0.04]'
-              : 'text-on-surface-muted hover:text-on-surface-medium'
-          }`}
-        >
-          Propiedad ({propMeters.length})
-        </button>
-      </div>
-
-      {meters.length === 0 ? (
+      {deptMeters.length === 0 ? (
         <EmptyState
           icon={Gauge}
           title="Sin medidores"
-          description={`No hay medidores de ${tab === 'department' ? 'departamento' : 'propiedad'} registrados.`}
+          description="No hay medidores de departamento registrados."
         />
       ) : (
         <div className={tableContainerCls}>
@@ -153,13 +102,11 @@ export default function Meters() {
               <tr className={tableHeaderCls}>
                 <th className={tableHeaderCellCls}>ID</th>
                 <th className={tableHeaderCellCls}>Tipo</th>
-                <th className={tableHeaderCellCls}>
-                  {tab === 'department' ? 'Departamento' : 'Propiedad'}
-                </th>
+                <th className={tableHeaderCellCls}>Departamento</th>
               </tr>
             </thead>
             <tbody>
-              {meters.map((m) => (
+              {deptMeters.map((m) => (
                 <tr key={m.id} className={tableRowCls}>
                   <td
                     className={`${tableCellCls} font-mono text-on-surface-muted`}
@@ -175,9 +122,7 @@ export default function Meters() {
                     </div>
                   </td>
                   <td className={`${tableCellCls} text-on-surface-medium`}>
-                    {tab === 'department'
-                      ? (m as DepartmentMeter).department?.name || 'N/A'
-                      : (m as PropertyMeter).property?.name || 'N/A'}
+                    {m.department?.name || 'N/A'}
                   </td>
                 </tr>
               ))}
@@ -189,39 +134,9 @@ export default function Meters() {
       <Modal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={`Nuevo Medidor (${tab === 'department' ? 'Departamento' : 'Propiedad'})`}
+        title="Nuevo Medidor"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="flex gap-1 bg-surface-raised p-1 rounded-xl mb-2">
-            <button
-              type="button"
-              onClick={() => {
-                setTab('department');
-                setSelectedId('');
-              }}
-              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                tab === 'department'
-                  ? 'bg-surface text-on-surface shadow-sm ring-1 ring-black/[0.04]'
-                  : 'text-on-surface-muted hover:text-on-surface-medium'
-              }`}
-            >
-              Departamento
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setTab('property');
-                setSelectedId('');
-              }}
-              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                tab === 'property'
-                  ? 'bg-surface text-on-surface shadow-sm ring-1 ring-black/[0.04]'
-                  : 'text-on-surface-muted hover:text-on-surface-medium'
-              }`}
-            >
-              Propiedad
-            </button>
-          </div>
           <div>
             <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
               Tipo de Medidor
@@ -239,7 +154,7 @@ export default function Meters() {
           </div>
           <div>
             <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
-              {tab === 'department' ? 'Departamento' : 'Propiedad'}
+              Departamento
             </label>
             <select
               value={selectedId}
@@ -248,9 +163,9 @@ export default function Meters() {
               className={inputCls}
             >
               <option value="">Seleccionar...</option>
-              {(tab === 'department' ? departments : properties).map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
                 </option>
               ))}
             </select>

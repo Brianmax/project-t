@@ -3,6 +3,10 @@
   "collection": "@nestjs/schematics",
   "sourceRoot": "src",
   "compilerOptions": {
-    "deleteOutDir": true
+    "deleteOutDir": true,
+    "assets": [
+      { "include": "receipt/pdf/fonts/*.ttf", "watchAssets": true }
+    ],
+    "watchAssets": true
   }
 }

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Between, Repository } from 'typeorm';
 import {
   DepartmentMeter,
   MeterType,
@@ -30,14 +30,24 @@ export class ConsumptionService {
     year: number,
     startDay?: number,
     endDay?: number,
-  ): Promise<{ consumption: number; cost: number }> {
+  ): Promise<{
+    consumption: number;
+    cost: number;
+    currentReading: number | null;
+    previousReading: number | null;
+  }> {
     const departmentMeter = await this.departmentMeterRepository.findOne({
       where: { departmentId, meterType },
       relations: ['department'],
     });
 
     if (!departmentMeter) {
-      return { consumption: 0, cost: 0 };
+      return {
+        consumption: 0,
+        cost: 0,
+        currentReading: null,
+        previousReading: null,
+      };
     }
 
     const property = departmentMeter.department?.propertyId
@@ -49,46 +59,8 @@ export class ConsumptionService {
     let currentReading: MeterReading | null;
     let previousReading: MeterReading | null;
 
-    if (startDay !== undefined && endDay !== undefined) {
-      const rangeStart = new Date(year, month - 1, startDay);
-      const rangeEnd = new Date(year, month - 1, endDay);
-
-      currentReading = await this.meterReadingRepository
-        .createQueryBuilder('mr')
-        .where('mr.departmentMeterId = :meterId', {
-          meterId: departmentMeter.id,
-        })
-        .andWhere('mr.date <= :rangeEnd', { rangeEnd })
-        .orderBy('mr.date', 'DESC')
-        .getOne();
-
-      if (!currentReading) {
-        return { consumption: 0, cost: 0 };
-      }
-
-      previousReading = await this.meterReadingRepository
-        .createQueryBuilder('mr')
-        .where('mr.departmentMeterId = :meterId', {
-          meterId: departmentMeter.id,
-        })
-        .andWhere('mr.date < :rangeStart', { rangeStart })
-        .orderBy('mr.date', 'DESC')
-        .getOne();
-    } else {
-      currentReading = await this.meterReadingRepository.findOne({
-        where: {
-          departmentMeterId: departmentMeter.id,
-          billingMonth: month,
-          billingYear: year,
-        },
-        order: { date: 'DESC' },
-      });
-
-      if (!currentReading) {
-        return { consumption: 0, cost: 0 };
-      }
-
-      previousReading = await this.meterReadingRepository
+    const findPreviousBillingPeriodReading = () =>
+      this.meterReadingRepository
         .createQueryBuilder('mr')
         .where('mr.departmentMeterId = :meterId', {
           meterId: departmentMeter.id,
@@ -101,10 +73,86 @@ export class ConsumptionService {
         .addOrderBy('mr.billingMonth', 'DESC')
         .addOrderBy('mr.date', 'DESC')
         .getOne();
+
+    if (startDay !== undefined || endDay !== undefined) {
+      if (endDay !== undefined) {
+        const rangeEnd = new Date(year, month - 1, endDay);
+        currentReading = await this.meterReadingRepository
+          .createQueryBuilder('mr')
+          .where('mr.departmentMeterId = :meterId', {
+            meterId: departmentMeter.id,
+          })
+          .andWhere('mr.date <= :rangeEnd', { rangeEnd })
+          .orderBy('mr.date', 'DESC')
+          .getOne();
+      } else {
+        currentReading = await this.meterReadingRepository.findOne({
+          where: {
+            departmentMeterId: departmentMeter.id,
+            billingMonth: month,
+            billingYear: year,
+          },
+          order: { date: 'DESC' },
+        });
+      }
+
+      if (!currentReading) {
+        return {
+          consumption: 0,
+          cost: 0,
+          currentReading: null,
+          previousReading: null,
+        };
+      }
+
+      if (startDay !== undefined) {
+        const rangeStart = new Date(year, month - 1, startDay);
+        previousReading = await this.meterReadingRepository
+          .createQueryBuilder('mr')
+          .where('mr.departmentMeterId = :meterId', {
+            meterId: departmentMeter.id,
+          })
+          .andWhere('mr.billingMonth = :month', { month })
+          .andWhere('mr.billingYear = :year', { year })
+          .andWhere('mr.date >= :rangeStart', { rangeStart })
+          .orderBy('mr.date', 'ASC')
+          .getOne();
+      } else {
+        previousReading = await findPreviousBillingPeriodReading();
+      }
+
+      if (!previousReading) {
+        previousReading = await findPreviousBillingPeriodReading();
+      }
+    } else {
+      currentReading = await this.meterReadingRepository.findOne({
+        where: {
+          departmentMeterId: departmentMeter.id,
+          billingMonth: month,
+          billingYear: year,
+        },
+        order: { date: 'DESC' },
+      });
+
+      if (!currentReading) {
+        return {
+          consumption: 0,
+          cost: 0,
+          currentReading: null,
+          previousReading: null,
+        };
+      }
+
+      previousReading = await findPreviousBillingPeriodReading();
     }
 
     if (!previousReading) {
-      return { consumption: 0, cost: 0 };
+      return {
+        consumption: 0,
+        cost: 0,
+        currentReading: Number(currentReading.reading),
+        previousReading: null,
+      };
     }
 
     const consumption =
@@ -115,7 +163,12 @@ export class ConsumptionService {
         `Negative consumption detected for meter ${departmentMeter.id}: ` +
           `current=${currentReading.reading} previous=${previousReading.reading} consumption=${consumption}`,
       );
-      return { consumption: 0, cost: 0 };
+      return {
+        consumption: 0,
+        cost: 0,
+        currentReading: Number(currentReading.reading),
+        previousReading: Number(previousReading.reading),
+      };
     }
     let cost = 0;
 
@@ -131,7 +184,64 @@ export class ConsumptionService {
       cost = consumption * rate;
     }
 
-    return { consumption, cost };
+    return {
+      consumption,
+      cost,
+      currentReading: Number(currentReading.reading),
+      previousReading: Number(previousReading.reading),
+    };
+  }
+
+  async findMetersMissingReadingsForPeriod(
+    departmentId: string,
+    month: number,
+    year: number,
+    endDay?: number,
+  ): Promise<MeterType[]> {
+    const meters = await this.departmentMeterRepository.find({
+      where: { departmentId },
+    });
+
+    const missing: MeterType[] = [];
+    for (const meter of meters) {
+      const hasReading = await this.hasReadingForPeriod(
+        meter.id,
+        month,
+        year,
+        endDay,
+      );
+      if (!hasReading) {
+        missing.push(meter.meterType);
+      }
+    }
+    return missing;
+  }
+
+  private async hasReadingForPeriod(
+    meterId: string,
+    month: number,
+    year: number,
+    endDay?: number,
+  ): Promise<boolean> {
+    if (endDay !== undefined) {
+      const rangeStart = new Date(year, month - 1, 1);
+      const rangeEnd = new Date(year, month - 1, endDay);
+      const count = await this.meterReadingRepository.count({
+        where: {
+          departmentMeterId: meterId,
+          date: Between(rangeStart, rangeEnd),
+        },
+      });
+      return count > 0;
+    }
+    const count = await this.meterReadingRepository.count({
+      where: {
+        departmentMeterId: meterId,
+        billingMonth: month,
+        billingYear: year,
+      },
+    });
+    return count > 0;
   }
 
   async calculateCurrentConsumption(departmentId: string) {

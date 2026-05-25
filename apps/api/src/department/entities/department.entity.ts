@@ -1,4 +1,10 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { Property } from '../../property/entities/property.entity';
 
 @Entity()
@@ -16,6 +22,7 @@ export class Department {
   numberOfRooms: number;
 
   @ManyToOne(() => Property, (property) => property.id)
+  @JoinColumn({ name: 'property_id' })
   property: Property;
 
   @Column({ name: 'property_id', type: 'uuid' })

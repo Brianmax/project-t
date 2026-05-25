@@ -74,7 +74,7 @@ export class ContractService {
   async findOne(id: string): Promise<Contract> {
     const contract = await this.contractRepository.findOne({
       where: { id },
-      relations: ['tenant', 'department'],
+      relations: ['tenant', 'department', 'department.property'],
     });
     if (!contract) {
       throw new NotFoundException(`Contract with ID "${id}" not found`);

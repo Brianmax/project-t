@@ -31,7 +31,7 @@
    - [G.8 The Preview Pane](#g8-the-preview-pane)
    - [G.9 The "Generar Recibo" Button](#g9-the-generar-recibo-button)
    - [G.10 The Receipt Modal](#g10-the-receipt-modal)
-   - [G.11 The "Aprobar" and "Denegar" Actions](#g11-the-aprobar-and-denegar-actions)
+   - [G.11 The "Registrar Pago" Action](#g11-the-registrar-pago-action)
    - [G.12 Regenerating a Receipt](#g12-regenerating-a-receipt)
    - [G.13 Receipt Status Machine](#g13-receipt-status-machine)
    - [G.14 Receipt Anatomy — Field by Field](#g14-receipt-anatomy--field-by-field)
@@ -40,7 +40,14 @@
    - [G.17 Worked Example: Late-Fee Grace Period](#g17-worked-example-late-fee-grace-period)
    - [G.18 Worked Example: Negative Consumption Fallback](#g18-worked-example-negative-consumption-fallback)
    - [G.19 Failure Scenarios & Recovery](#g19-failure-scenarios--recovery)
+   - [G.20 Receipt PDF Generation](#g20-receipt-pdf-generation)
+   - [G.21 Payments and the Tenant Balance](#g21-payments-and-the-tenant-balance)
 - [H. Step-by-Step: Payments](#h-step-by-step-payments)
+   - [H.1 Fields](#h1-fields)
+   - [H.2 How a receipt-linked payment changes the receipt](#h2-how-a-receipt-linked-payment-changes-the-receipt)
+   - [H.3 Editing or deleting a payment](#h3-editing-or-deleting-a-payment)
+   - [H.4 Constraints](#h4-constraints)
+   - [H.5 Caveat: legacy payments and the receipt items snapshot](#h5-caveat-legacy-payments-and-the-receipt-items-snapshot)
 - [I. Step-by-Step: Extra Charges](#i-step-by-step-extra-charges)
    - [I.1 Manual Extra Charges](#i1-manual-extra-charges)
    - [I.2 Auto Late Fees](#i2-auto-late-fees)
@@ -117,6 +124,7 @@ The operator never has to manually compute anything. Once readings and payments 
 | **No pagado / Pagado** | Receipt status. `No pagado` is the default on creation. `Pagado` is set manually by the operator and is terminal (cannot be regenerated or reverted in this version — see [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5)). | — |
 | **Indicar salida anticipada** | UI toggle to declare a mid-month departure on the billing page. | — |
 | **Prorratear alquiler** | Checkbox that scales the rent by `daysOccupied / daysInMonth`. | — |
+| **Generar PDF / Descargar PDF** | Operator-triggered render of the receipt as a printable A4 PDF, stored in S3-compatible object storage. Auto-regenerated when the receipt is regenerated. | — |
 
 ---
 
@@ -613,6 +621,8 @@ The status pill colors:
 | `unpaid` | No pagado | amber |
 | `paid` | Pagado | emerald |
 
+**Saldo Anterior (Carry-forward):** If the tenant has unpaid balances from previous months, the modal will display a **Saldo anterior (Deuda pendiente)** section. This lists each unpaid month and its remaining balance. These amounts are **not** added to the current month's `Total mes actual`, but are summed into a final **TOTAL DEUDA** line, giving the tenant a clear view of their entire debt.
+
 When the receipt is `paid`, a sub-line beneath the pill shows `Pagado el <fecha> por <user-id-short>` (provenance from the `paidAt` / `paidBy` columns).
 
 The modal includes action buttons depending on status (see G.11) and a "Enviar por WhatsApp" placeholder button that currently shows an alert ("WhatsApp sending will be implemented in next phase") — it does not send anything.
@@ -621,23 +631,31 @@ The modal includes action buttons depending on status (see G.11) and a "Enviar p
 >
 > _✅ DONE: Phase 05 collapsed the 3-state pill to 2 states; added paid-provenance line._
 
-### G.11 The "Marcar como pagado" Action
+### G.11 The "Registrar Pago" Action
 
-Visible in the receipt modal **only** while status is `unpaid`.
+One button appears in the receipt modal while status is `unpaid`:
 
 | Button | API call | What it sets |
 | :-- | :-- | :-- |
-| **Marcar como pagado** | `PATCH /contracts/:id/receipts/status?month&year` with `{ status: "paid" }` | `status = paid`, `paidAt = now()`, `paidBy = <current user>`. |
+| **Registrar Pago** | `POST /payments` with `contractId`, `receiptId`, `amount`, `date`, `method`, optional `reference` and `description`. | Creates a payment row; the system runs `ContractLedgerService.recalculate()` which applies payments to receipts in FIFO order (oldest first). The receipt may flip to `paid` automatically if the cumulative payments cover `totalDue`. |
 
-The call goes through `ReceiptService.updateReceiptStatus`. The receipt's `items[]`, `totalDue`, `totalPayments`, and `balance` are **not** recomputed — only `status`, `paidAt`, and `paidBy` change.
+There is **no** "Marcar como pagado" button. To mark a receipt as paid, record a payment of the right amount (or greater, if you want to leave credit for future receipts).
 
-**Toast:** *"Recibo marcado como pagado"*.
+The Registrar Pago modal pre-fills:
+- `Contrato` and `Recibo` (from the open receipt — operator cannot change them).
+- `Monto` = the receipt's outstanding amount from the ledger (`remaining` field — FIFO-aware).
+- `Fecha` = today.
+- `Método` = cash (operator changes if needed).
+- **Saldo del contrato** = a banner near the amount input showing the contract's overall balance and any remaining credit.
 
-**`paid` is terminal in this version.** There is no Revertir button. The endpoint refuses any `paid → unpaid` flip with `409 RECEIPT_PAID_IMMUTABLE`. Reintroduction of a revert path (with conditions like supervisor role or time-window) is tracked in [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5).
+After save, the receipt modal refetches both the payment list (new "Pagos registrados" section under the items), the receipt itself, and the ledger snapshot (so the new status / balance / credit show immediately).
+
+**`paid` is no longer terminal.** A `paid` receipt reverts to `unpaid` automatically if its linked payments are deleted or a refund drops the cumulative payments below `totalDue` — see G.13. Reverting happens only as a side effect of payment-ledger changes via `recalculate()`.
 
 > **📝 Adjustments / Notes**
 >
 > _✅ DONE: Phase 05 — replaced Aprobar/Denegar with single-button Marcar como pagado; flip is audited via paidAt + paidBy._
+> _✅ Phase 06 — removed "Marcar como pagado" entirely. Receipt status is now derived from the payment ledger via `ContractLedgerService.recalculate()`. To mark a receipt as paid, record a payment. Payment amount pre-fill now uses the ledger snapshot's `remaining` field (FIFO-aware). Contract balance (`ledger.balance`) displayed near the amount input._
 
 ### G.12 Regenerating a Receipt
 
@@ -645,37 +663,46 @@ The call goes through `ReceiptService.updateReceiptStatus`. The receipt's `items
 
 When you click Generar Recibo and a receipt already exists for the period:
 
-| Existing status | Result |
-| :-- | :-- |
-| `unpaid` | Always upserts. Status stays `unpaid`. Idempotent — click as many times as you want; the receipt picks up the latest readings / extra charges / payments. |
-| `paid` | **409 `RECEIPT_LOCKED`**: *"Receipt for M/Y is paid and cannot be regenerated."* The UI also disables the Regenerar Recibo button in this case with hover tooltip *"Recibo pagado — no se puede regenerar"*. |
+| Existing status | Linked payments | Result |
+| :-- | :-- | :-- |
+| `unpaid` | none | Upserts. Status stays `unpaid`. Idempotent — click as many times as you want; the receipt picks up the latest readings, extras, and date-based payments. **Also refreshes the `carryForwardDetails` snapshot** to reflect any payments made against *previous* months since the last generation. |
+| `unpaid` | one or more | **409 `RECEIPT_HAS_PAYMENTS`**: *"Receipt for M/Y has N linked payment(s); delete them before regenerating."* You must delete the payments (from the Pagos page) before regenerating, then re-record them after. |
+| `paid` | any | **409 `RECEIPT_LOCKED`**: *"Receipt for M/Y is paid and cannot be regenerated."* The UI also disables the Regenerar Recibo button with hover tooltip *"Recibo pagado — no se puede regenerar"*. |
 
-There is no `force` flag any more. There is no Denegar → Regenerar workaround. The flow is: as long as the receipt is `unpaid`, click Generar Recibo to refresh.
+Why the `RECEIPT_HAS_PAYMENTS` block: regenerating overwrites the receipt's `items[]` snapshot and recomputes `totalDue` from current readings/extras. If payments are already linked, their amounts are still summed into `totalPayments`, but the new `totalDue` may no longer match the world the operator was paying against — silently breaking the receipt/payment alignment. The block forces the operator to consciously decide.
+
+There is no `force` flag. There is no Denegar → Regenerar workaround.
 
 > **📝 Adjustments / Notes**
 >
 > _✅ DONE: Phase 05 — dropped the `force` flag and the Denegar → Regenerar dance._
+> _✅ Payment system phase — added RECEIPT_HAS_PAYMENTS guard._
 
 ### G.13 Receipt Status Machine
 
 ```mermaid
 stateDiagram-v2
     [*] --> unpaid: issueReceipt
-    unpaid --> unpaid: Generar Recibo (refresh items)
-    unpaid --> paid: Marcar como pagado
-    paid --> [*]: terminal in this version
+    unpaid --> unpaid: Generar Recibo (no linked payments)
+    unpaid --> paid: Registrar Pago → recalculate() → balance ≥ 0 (automatic)
+    paid --> unpaid: Delete payment / record refund → recalculate() → balance < 0
+    paid --> [*]: contract teardown
 ```
 
 Key rules:
 - A receipt is **always created** with status `unpaid`.
-- `unpaid → unpaid` regeneration refreshes `items[]` and totals.
-- `unpaid → paid` is a one-way door in this phase. Writes `paidAt` and `paidBy` audit columns. See [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5) for the planned revert flow.
-- `paid` rows are locked: regeneration is blocked at both the UI and the server (`409 RECEIPT_LOCKED`).
+- `unpaid → unpaid` regeneration is allowed only when no payment is linked to the receipt (otherwise `409 RECEIPT_HAS_PAYMENTS`).
+- `unpaid → paid` happens **only via the payment ledger**: operator records a payment via Registrar Pago; `recalculate()` applies payments in FIFO order (oldest month first) and flips status to `paid` when cumulative applied credit ≥ `totalDue`. Writes `paidAt = now`, `paidBy = actor user ID` (only if not already set).
+- `paid → unpaid` happens automatically when a payment is deleted (or a refund is recorded) that drops the FIFO-applied credit below `totalDue`. `paidAt` and `paidBy` are cleared.
+- There is **no manual "Marcar como pagado"** button or endpoint. To mark a receipt as paid, record a payment of the right amount.
+- A `paid` receipt cannot be regenerated. To change billing data on a paid receipt, you must first delete all its linked payments (which reverts it to `unpaid` via `recalculate()`), regenerate, and re-record.
 - The unique constraint `(contractId, month, year)` ensures one row per period.
 
 > **📝 Adjustments / Notes**
 >
 > _✅ DONE: Phase 05 — 3-state machine collapsed to 2 states with paid as terminal._
+> _✅ Payment system phase — `paid` is no longer terminal: payment delete or refund can revert to `unpaid`. Added automatic flip via Registrar Pago. See [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5)._
+> _✅ Phase 06 — removed "Marcar como pagado" manual flip. Status is now entirely derived from the payment ledger via `ContractLedgerService.recalculate()`. See [TEN-22](https://linear.app/tenant-aqp/issue/TEN-22)._
 
 ### G.14 Receipt Anatomy — Field by Field
 
@@ -689,16 +716,17 @@ When you fetch `GET /contracts/:id/receipts?month&year` you receive an object wi
 | `year` | int | Query param | Billing year. |
 | `startDay` | int or null | Query param, persisted | First day of the partial period if a prorated receipt; otherwise null. |
 | `endDay` | int or null | Query param, persisted | Last day of the partial period; otherwise null. |
-| `status` | enum | Persisted; default `unpaid` | One of `unpaid`, `paid`. `paid` is terminal in this version (no revert; see [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5)). |
-| `paidAt` | timestamptz or null | Set when status flips to `paid` | Audit column. |
-| `paidBy` | uuid or null | Set when status flips to `paid` — value is the user ID of the operator who clicked the button | Audit column. |
+| `status` | enum | Persisted; default `unpaid`; derived by `ContractLedgerService.recalculate()` from the FIFO payment ledger | One of `unpaid`, `paid`. Flipped automatically by `recalculate()` when cumulative payments cover `totalDue` (→ paid) or drop below it (→ unpaid). There is no manual status-flip endpoint. |
+| `paidAt` | timestamptz or null | Set by `recalculate()` when status flips to `paid`. Cleared when status reverts to `unpaid`. | Audit column. |
+| `paidBy` | uuid or null | Set by `recalculate()` when status flips to `paid` — value is the `actorUserId` passed to `recalculate()` (the operator who recorded the payment). Cleared when status reverts. | Audit column. |
+| `totalPayments` | decimal(10,2) | At first issuance: sum of date-matching payments. After any linked-payment mutation: `SUM(payment.amount WHERE receipt_id = X)`. Refunds (negative amounts) reduce it. | Used to compute balance. |
 | `tenantName` | string | Snapshotted from `contract.tenant.name` at issue time | Frozen — does **not** update if you later rename the tenant. |
 | `departmentName` | string | Snapshotted from `contract.department.name` | Frozen. |
 | `propertyAddress` | string | Snapshotted from `contract.department.property.address` | Frozen. |
 | `period` | string | Built at issue time | `"April 2026"` (full month) or `"1–15 April 2026"` (prorated). |
 | `items[]` | jsonb array of `{description, amount}` | Built at issue time | Every line on the receipt, in order: rent, electricity, water, manual extras (each prefixed `Otros:`), late-fee extras (also `Otros:`), then payments (with **negative** amounts). |
-| `totalPayments` | decimal(10,2) | Sum of positive payment amounts | Used to compute balance. |
-| `totalDue` | decimal(10,2) | `rent + light + water + sum(extras)` | The amount the tenant is being billed. |
+| `carryForwardDetails` | jsonb array of `{period, balance}` | Snapshotted at issue time | A list of unpaid debts from months *prior* to the receipt month. Used to render the "Saldo anterior" section. |
+| `totalDue` | decimal(10,2) | `rent + light + water + sum(extras)` | The amount the tenant is being billed **for the current month**. Does not include carry-forward. |
 | `balance` | decimal(10,2) | `totalPayments − totalDue` | **Positive** = tenant has credit / overpaid. **Negative** = tenant owes. |
 | `createdAt` / `updatedAt` | timestamp | Auto | TypeORM timestamps. |
 
@@ -827,55 +855,243 @@ The system computes `consumption = 150 − 4820 = −4670`. This is impossible i
 | :-- | :-- | :-- | :-- |
 | Receipt shows S/ 0 for utilities | Only one reading exists for the meter | No baseline | Take/back-date a second reading and Regenerar. |
 | Receipt shows S/ 0 for utilities, but you know consumption happened | Latest reading is **lower** than previous | Meter rolled over or was replaced | See G.18 — fix the previous reading or insert a swap-day reading. |
-| Receipt total didn't update after I added a payment | Receipt was approved before payment | `items[]` is a snapshot | Regenerar; status reverts to `pending_review`. If approved, may need to Denegar first (see G.12). |
+| Receipt total didn't update after I added a payment | Receipt is `unpaid` and was generated before the payment | `items[]` is a snapshot | Click `Regenerar Recibo`. (If the receipt is `paid`, it's locked — see [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5) for the planned revert flow.) |
 | Receipt shows the wrong tenant name | Tenant was renamed after issue | Snapshot fields | Regenerar to refresh. |
 | Two receipts for the same period | Shouldn't happen | Unique constraint blocks it | If you see it in the DB, it's a bug — report it. |
 | Receipt was generated, then I added an extra charge, but it's not on the receipt | Same as the payment case | Snapshot | Regenerar. |
 | Mid-month rent prorated incorrectly | `daysOccupied` calculated wrong | `endDay − startDay + 1` rule | Verify: 1 to 15 should give 15 days. 1 to 30 should give 30 days. 5 to 20 should give 16 days. If different, double-check the inputs you entered. |
-| Mora button doesn't appear even though the tenant is late | Either receipt balance is ≥ 0 (payments cover the dues) or today is on/before day 15 of the next month, or a late fee already exists | Frontend filter | Verify each condition (see G.7). |
-| Mora button appears but clicking it gives an error | Backend recomputed and the balance is now ≥ 0 (e.g. recent payment) | Frontend/backend out of sync | Reload the page; if the situation persists, the receipt's balance should match the latest payments. |
-| Generar Recibo button gives 400 "already approved" | Receipt is approved, force flag not added | See G.12 | Workaround: Denegar then Generar Recibo. |
-| Approved receipt was already shared with the tenant externally, then I Regenerar'd | External version is stale | No notification system | Re-send externally; consider re-Approving afterward to lock the new version. |
+| Generar Recibo button gives 409 `RECEIPT_LOCKED` | Targeting a paid receipt | Paid receipts are terminal in this version | Cannot regenerate a paid receipt — see [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5) for the planned revert flow. |
+| Paid receipt was already shared with the tenant externally, then a payment came in | External version is stale | Receipt is locked once paid | The number on the paid receipt represents what was settled at the time. Add corrections via future receipts or a new transaction. |
 
 > **📝 Adjustments / Notes**
 >
-> _TODO: capture proposed changes here._
+> _✅ DONE: Phase 05 cleanup — dropped mora-button rows, replaced "force=true" workaround with the new `RECEIPT_LOCKED` 409, updated payment-late row to reflect paid-as-terminal._
+
+### G.20 Receipt PDF Generation
+
+A printable, single-page PDF rendition of each receipt — for sharing with the tenant via WhatsApp, email, or print. Stored in S3-compatible object storage (MinIO in dev, AWS S3 in prod).
+
+**Setup requirements**
+
+| Requirement | Why | How |
+| :-- | :-- | :-- |
+| `RECEIPT_PDF_ENABLED=true` in `apps/api/.env` | Feature flag; off by default | Edit the env value and restart the API |
+| MinIO + Redis containers running | Object store + job queue | `docker compose up -d` from repo root (see `docker-compose.yml`) |
+
+When the flag is **off**, the `POST/GET/DELETE …/pdf` endpoints respond `404 FEATURE_DISABLED` and the `Generar PDF` button stays hidden. When **on**, the API:
+
+- Connects to Redis and registers the `receipt-pdf` BullMQ worker.
+- Verifies the MinIO bucket exists (creates it on first boot if missing).
+- Refuses to start when `NODE_ENV=production` AND `AWS_S3_ENDPOINT` points at `localhost` / a private-IP range — a safety check against shipping MinIO config to prod.
+
+**The Generar PDF button — state machine**
+
+Sits in the receipt modal footer next to the WhatsApp placeholder. Its label and behavior depend on the receipt's `pdfStatus`:
+
+| `pdfStatus` | Button label | What happens on click |
+| :-- | :-- | :-- |
+| `idle` (no PDF yet) | `Generar PDF` | POST → status flips to `queued` → frontend polls `…/pdf/status` every 1.5 s |
+| `queued` / `rendering` | `Generando PDF...` (disabled) | Polling continues; no new job is enqueued |
+| `ready` | `Descargar PDF` | GET returns a 5-min signed URL; browser navigates to it for direct download |
+| `failed` | `Reintentar PDF` + inline error | Click to enqueue a fresh render |
+
+Polling has a 60-second cap. If it elapses without resolution, the button reverts to `Reintentar PDF` with a `Tiempo agotado, intenta de nuevo` notice. On `ready`, the modal also shows `Generado el <fecha> · <hora>` beneath the button row.
+
+**Auto-regeneration on `Regenerar Recibo`**
+
+When the operator clicks `Regenerar Recibo` on an `unpaid` receipt that already has a PDF (`pdfKey IS NOT NULL`), the backend **auto-enqueues** a fresh render job after the receipt save commits. The modal:
+
+1. Updates `pdfStatus` to `queued` in the response.
+2. The frontend detects this and starts polling without operator action.
+3. The button transitions `Generando PDF...` → `Descargar PDF` when the new render lands.
+
+The new PDF **overwrites the old one at the same storage key** — no per-version files accumulate.
+
+**Storage layout**
+
+- Key: `receipts/<contractId>/<receiptId>.pdf` (deterministic — same receipt always writes to the same key).
+- Content-type: `application/pdf`.
+- Download filename: `recibo-<contractIdShort>-<year>-<monthPadded>.pdf` (e.g. `recibo-c8a3-2026-05.pdf`).
+- TTL on signed download URLs: 5 minutes (`STORAGE_URL_TTL_SECONDS=300`).
+
+**Flow diagram**
+
+```mermaid
+sequenceDiagram
+    participant FE as Operator (modal)
+    participant API as PdfController
+    participant DB as Postgres
+    participant Q as Redis (BullMQ)
+    participant W as PdfWorker
+    participant S3 as MinIO/S3
+
+    FE->>API: POST /…/pdf
+    API->>DB: pdfStatus = 'queued'
+    API->>Q: enqueue { receiptId }
+    API-->>FE: 202 { jobId, pdfStatus: 'queued' }
+
+    loop poll every 1.5s, max 60s
+        FE->>API: GET /…/pdf/status
+        API->>DB: read row
+        API-->>FE: { pdfStatus, pdfGeneratedAt, pdfError }
+    end
+
+    W->>Q: dequeue
+    W->>DB: pdfStatus = 'rendering'
+    W->>DB: load receipt + items[]
+    W->>W: render via pdfkit + Roboto
+    W->>S3: PUT receipts/<cId>/<rId>.pdf
+    W->>DB: pdfStatus = 'ready', pdfKey, pdfGeneratedAt
+
+    FE->>API: poll sees ready
+    FE->>API: GET /…/pdf
+    API->>S3: getSignedUrl
+    API-->>FE: 200 { url, filename }
+    FE->>S3: browser navigates to signed URL
+    S3-->>FE: PDF download
+```
+
+**PDF content**
+
+Single-page A4 portrait, Spanish locale. Sections:
+
+- Title `RECIBO DE ALQUILER` + period (`Mayo 2026`)
+- Receipt N° (short ID, top-right)
+- Tenant block: full name + DNI
+- Property block: department + address
+- Items table: description / monto (zebra-striped rows, payments rendered with negative sign in muted color)
+- Totals card (right-aligned): `Total facturado`, `Total pagado`, **`SALDO`** in larger bold font, **red** when balance is negative (tenant owes) or **green** when ≥ 0
+- Footer: `Generado el <fecha> · <hora>` (centered, muted)
+
+No logo, no header image, no status pill. Roboto-Regular / Roboto-Bold (Apache 2.0) fonts are bundled with the API for proper accent handling.
+
+**Failure modes**
+
+| Scenario | Symptom | Recovery |
+| :-- | :-- | :-- |
+| MinIO container is down | Job goes `queued` → `failed`; error chip says S3 connection error | `docker compose up -d minio`, click `Reintentar PDF` |
+| Redis container is down | API refuses to boot when feature flag is on (boot-time health check) | `docker compose up -d redis`, restart API |
+| Worker process crashed | Status stuck at `queued` indefinitely | Restart the API; BullMQ stalled-job detection eventually requeues |
+| Polling timeout (60 s) | Button shows `Reintentar PDF` + `Tiempo agotado` notice | Click `Reintentar PDF` to enqueue a new job |
+| Signed URL expired | Operator copied/saved a download URL > 5 min ago | Click `Descargar PDF` again to mint a fresh URL |
+| `Generar PDF` button missing | Feature flag is off, OR the receipt is a preview (not persisted yet) | Verify `RECEIPT_PDF_ENABLED=true`; ensure the receipt has been generated (modal showed `Recibo generado exitosamente`) |
+| Targeting a paid receipt's `Regenerar Recibo` | 409 `RECEIPT_LOCKED` | Paid receipts are terminal; no PDF regeneration. The existing PDF in storage remains downloadable. |
+
+**Internals (for developers)**
+
+- Renderer: `pdfkit` + bundled `Roboto-Regular.ttf` / `Roboto-Bold.ttf` for Unicode accent support.
+- Storage abstraction: `ReceiptStorage` interface with one `S3ReceiptStorage` implementation. Same SDK (`@aws-sdk/client-s3`) targets MinIO or AWS S3 — swap by setting/unsetting `AWS_S3_ENDPOINT`.
+- Queue: BullMQ `receipt-pdf` queue, 3-attempt exponential backoff (1s → 4s → 16s), worker concurrency 2. Worker registers conditionally on `RECEIPT_PDF_ENABLED=true` so a fresh boot with the flag off does not connect to Redis at all.
+- Application-level deduplication: `enqueueGeneration` short-circuits when `pdfStatus` is already `queued` / `rendering`. BullMQ jobIds are auto-generated (deterministic-jobId collapse caused regeneration bugs in early development — see [TEN-14](https://linear.app/tenant-aqp/issue/TEN-14)). File-level dedup comes from the deterministic S3 key.
+- Snapshot semantics: the worker re-loads the receipt from the DB at render time, so any update committed before the worker dequeues the job is reflected in the PDF.
+
+> **📝 Adjustments / Notes**
+>
+> _✅ DONE: Phase 04 — receipt PDF generation with MinIO + BullMQ async worker (see TEN-8)._
+
+### G.21 Payments and the Tenant Balance
+
+When a payment is recorded, the system applies it automatically to the unpaid receipts of the contract, starting with the oldest. Any excess remains as credit in favor of the tenant and is used for future receipts. There is no "Marcar como pagado" button: to mark a receipt as paid, record a payment of an amount equal to (or greater than, if you want to leave credit) the receipt's outstanding balance.
+
+**How it works:**
+
+1. Operator records a payment via **Registrar Pago** (from the receipt modal or the Pagos page).
+2. The backend creates the payment row and calls `ContractLedgerService.recalculate()` inside the same database transaction.
+3. `recalculate()` sums all payments for the contract, then walks through receipts in chronological order (oldest month first = FIFO), applying credit until each receipt's `totalDue` is covered.
+4. A receipt whose cumulative applied credit ≥ `totalDue` is marked `paid` (with `paidAt` and `paidBy` set for audit). A receipt whose credit falls short stays `unpaid`.
+5. Any remaining credit after all receipts are processed is the contract's **credit balance** — visible in the Pagos modal as "Saldo del contrato" and in the ledger endpoint as `creditRemaining`.
+
+**Deleting a payment:**
+
+When a payment is deleted, `recalculate()` runs again with the updated payment set. If the removal drops the cumulative credit below a receipt's `totalDue`, that receipt reverts to `unpaid` and its `paidAt` / `paidBy` are cleared. This is fully deterministic and reversible.
+
+**Refunds:**
+
+A refund is a payment with a **negative amount**. It reduces the total credit available and may cause one or more receipts to flip from `paid` back to `unpaid` via the same `recalculate()` mechanism.
+
+> **📝 Adjustments / Notes**
+>
+> _✅ Phase 06 — new subsection added per TEN-22. Describes the ledger-based payment flow and the removal of the manual "Marcar como pagado" button._
 
 ---
 
 ## H. Step-by-Step: Payments
 
-**Where:** sidebar → **Pagos** → **+**. Or from the contract's detail page.
+There are **two places** to record a payment:
 
-**Fields:**
+1. **Sidebar → Pagos → "+ Nuevo Pago"** — full payment form, choose any contract.
+2. **Department billing page → receipt modal → "Registrar Pago"** — pre-fills the contract, receipt link, and suggested amount (the receipt's outstanding balance).
+
+Either entry point writes to the same backend.
+
+### H.1 Fields
 
 | Field | Required | Notes |
 | :-- | :-- | :-- |
-| Contrato | yes | Pick the contract receiving the payment. |
-| Monto | yes | Amount in S/. |
-| Fecha | yes | The date the payment was received. **This date determines which receipt the payment shows on.** |
-| Tipo | yes | One of: `rent`, `water`, `light`, `advance`, `guarantee`, `refund`. Informational only — does not change math. |
-| Descripción | optional | Free text: "Yape transfer", "Cash", etc. |
+| Contrato | yes | The contract receiving the payment. Auto-filled when launched from the receipt modal. |
+| Recibo | optional | The specific receipt this payment settles. When set, the receipt's `totalPayments`, `balance`, and `status` are recomputed automatically. When left blank, the payment is **standalone** (deposit, advance, refund) and does not touch any receipt. The dropdown only shows the chosen contract's `unpaid` receipts. |
+| Monto | yes | Amount in S/. Two decimals. Can be **negative** only when `Tipo = refund` — a refund reduces the receipt's `totalPayments` and can flip a paid receipt back to `unpaid`. |
+| Fecha | yes | The date the payment was received. **Cannot be in the future** (rejected with `FUTURE_PAYMENT_DATE`). Backdating to past months is allowed. |
+| Método | yes | One of: `cash` (Efectivo), `bank_transfer` (Transferencia), `yape`, `plin`, `other` (Otro). Used for reconciliation reporting. |
+| Referencia | optional | Free text up to 128 characters. Use for transfer reference numbers, voucher IDs, etc. |
+| Tipo | conditional | **Required when Recibo is blank**; in that case it must be one of `advance`, `guarantee`, or `refund` (standalone payment types). **Hidden / optional when Recibo is selected** — the receipt itself describes what's being paid. |
+| Descripción | optional | Free text notes. |
 
-**How payments interact with receipts:**
+### H.2 How a receipt-linked payment changes the receipt
 
-- A receipt for `(contractId, month, year)` includes every payment whose `date` falls within `[periodStart, periodEnd]` of that month.
-- `periodStart = new Date(year, month-1, 1)`. `periodEnd = new Date(year, month, 0)` (last day of the month at midnight local time).
-- Each payment becomes a **negative** line item in the receipt's `items[]`. The description is `"Payment ({type}) - {description || 'N/A'}"`.
-- `totalPayments` is the sum of positive payment amounts. `balance = totalPayments − totalDue`.
+When you save a payment with `Recibo` set:
 
-**Constraints:**
+1. The payment row is created with `receipt_id = <receipt>.id`.
+2. The backend recomputes `totalPayments = SUM(payment.amount WHERE receipt_id = X)` inside a transaction holding a write lock on the receipt row.
+3. `balance = totalPayments − totalDue`. Sign convention: **`balance ≥ 0` means paid in full** (`= 0`) or overpaid (`> 0`); **`balance < 0` means the tenant still owes**.
+4. If `balance ≥ 0`: `status` flips to `paid`, `paidAt` is set to now, `paidBy` is set to the logged-in operator's user ID (unless already set).
+5. If `balance < 0`: `status` stays / reverts to `unpaid`, `paidAt` and `paidBy` are cleared.
+
+This means a paid receipt **can revert to unpaid** if you delete a payment or record a refund that drops the sum below `totalDue`.
+
+The receipt's `items[]` JSON array (the line-by-line snapshot) is **not** rewritten when you record a payment. The payment shows up in two places:
+- The receipt modal's "Pagos registrados" section (live list, fetched from `GET /receipts/:id/payments`).
+- The receipt's `totalPayments` / `balance` / `status` columns.
+
+The legacy items-array line items (`"Payment (rent) - ..."` with negative amount) are only added at **first issuance**, from payments whose `date` falls in the billing period and that had no receipt link yet. See H.5 for the caveat this creates.
+
+### H.3 Editing or deleting a payment
+
+`PATCH /payments/:id` and `DELETE /payments/:id` rerun the recompute on the affected receipt(s). If a payment's `receipt_id` is changed, both the previous and new receipts are recomputed.
+
+There is **no audit log of edits/deletes**. The current `recordedBy` column stores only the creator. Any operator can edit or delete any payment.
+
+### H.4 Constraints
 
 | Scenario | What happens |
 | :-- | :-- |
-| You backdate a payment to the previous month | It will appear on **that month's receipt**, not the current one. You'll need to regenerate that month's receipt to see the effect. |
-| You record the same payment twice | Two payment rows. No idempotency check. Verify before saving. |
-| You delete a payment that was already on an approved receipt | The approved receipt is **not** automatically updated. Regenerate to refresh (see G.12). |
-| You record an advance payment dated outside the billing period | It still belongs to the contract but **does not** affect that period's receipt. It will only appear in the receipt for the period containing its date. |
+| You enter a date in the future | Rejected with `FUTURE_PAYMENT_DATE`. |
+| You leave `Recibo` and `Tipo` both blank | Rejected with `PAYMENT_TYPE_REQUIRED`. |
+| You leave `Recibo` blank and choose `Tipo = rent / water / light` | Rejected with `INVALID_STANDALONE_TYPE`. Standalone payments must be `advance`, `guarantee`, or `refund`. |
+| You enter a negative `Monto` without `Tipo = refund` | Rejected with `NEGATIVE_AMOUNT_REQUIRES_REFUND`. |
+| You pick a Recibo whose contract differs from the chosen contract | Rejected with `RECEIPT_CONTRACT_MISMATCH`. The frontend filters the dropdown to prevent this, but the backend enforces it. |
+| You record a payment that exceeds `totalDue` | Accepted. Receipt flips to `paid` and `balance` becomes the positive overpayment. No automatic carry-forward to next month — operator handles the credit manually. |
+| You record a refund (negative amount) on a paid receipt | Accepted. `totalPayments` drops, `balance` recomputed; if it falls below 0, receipt reverts to `unpaid`. |
+| You record the same payment twice | Two rows. No idempotency. Both count toward `totalPayments`. Verify before saving. |
+| You record a payment on a terminated contract | Allowed (real scenarios include late payments after move-out). The frontend does not block this; the backend has no contract-status check. |
+| You delete the last linked payment on a paid receipt | Receipt reverts to `unpaid`, `paidAt`/`paidBy` cleared. |
+
+### H.5 Caveat: legacy payments and the receipt items snapshot
+
+The platform is mid-transition between two payment models. Be aware of this scenario:
+
+1. Record a payment dated April 10 with no `Recibo` chosen (standalone, contract-only).
+2. Later, generate the April receipt. At first-issuance, `calculateReceipt` finds the April 10 payment by date and includes it in `items[]` and `totalPayments`. Receipt shows `totalPayments = 100`.
+3. From the receipt modal, record an additional S/200 via "Registrar Pago" (this one gets `receipt_id` set).
+4. The recompute runs `SUM(amount) WHERE receipt_id = <april-receipt>` → S/200. **The original S/100 is no longer counted in `totalPayments`** because it has no `receipt_id`. Receipt now shows `totalPayments = 200`, missing the legacy S/100.
+
+The payment still exists; it's just not summed into the receipt's totals. The receipt's `items[]` still shows the original `"Payment (...) - ..."` line, so `items[]` and the totals disagree.
+
+**Workaround for now:** when recording payments against a freshly-issued receipt, always record them via "Registrar Pago" (so `receipt_id` is set), and avoid mixing in date-based standalone payments for the same period. This caveat is a known follow-up.
 
 > **📝 Adjustments / Notes**
 >
-> _TODO: capture proposed changes here._
+> _TODO: backfill receipt_id on legacy payments at issuance time so totals and items stay consistent. Tracked as a follow-up after this PR._
 
 ---
 
@@ -1068,15 +1284,20 @@ Whenever someone registers via **Regístrate**, their account is created with st
 | **Generate a receipt** | No contract on the department for that period | Create the contract first. |
 | **See electricity / water charges** on a receipt | Only one reading exists for the meter | Take a second reading and regenerate. |
 | **See electricity / water charges** | Current reading is lower than previous (meter replaced or rolled over) | Verify physically. The system treats this as 0 consumption (see G.18). |
-| **Regenerate an approved receipt** | The frontend does not auto-send `force=true` when status is `approved` | Click **Denegar** first, then **Generar Recibo**. |
-| **Generate Mora** | Receipt's balance is `≥ 0` | The tenant is paid up; no late fee applies. |
-| **Generate Mora** | Today is on or before day 15 of the month after the billing month | Wait until the grace period ends. |
-| **Generate Mora** | No receipt exists for that period | Generate the receipt first. |
-| **Delete a late fee** | It's auto-generated (`LATE_FEE`) | You cannot. Either record the payment so the receipt becomes balanced or contact a developer. |
+| **Regenerate a paid receipt** | `409 RECEIPT_LOCKED` — paid receipts cannot be regenerated directly. | Delete every linked payment first (this reverts the receipt to `unpaid`), then regenerate, then re-record the payments. |
+| **Regenerate an unpaid receipt with linked payments** | `409 RECEIPT_HAS_PAYMENTS` — regeneration would silently drift `totalDue` away from the world the operator paid against. | Delete the linked payments from the Pagos page (or from the receipt modal's "Pagos registrados" list), regenerate, re-record. |
+| **Record a payment in the future** | `400 FUTURE_PAYMENT_DATE` | Use today's date or earlier. Backdating to past months is allowed. |
+| **Record a standalone payment with type `rent` / `water` / `light`** | `400 INVALID_STANDALONE_TYPE` — these types only make sense when linked to a receipt | Either pick a receipt in the Recibo dropdown, or change the type to `advance` / `guarantee` / `refund`. |
+| **Record a negative payment without choosing type `refund`** | `400 NEGATIVE_AMOUNT_REQUIRES_REFUND` | Only refunds can have a negative amount. Switch the type or fix the sign. |
+| **Pick a receipt whose contract differs from the chosen contract** | `400 RECEIPT_CONTRACT_MISMATCH` | The Recibo dropdown is filtered by contract — change the contract first to see its receipts. |
+| **Generate Mora** | Mora generation was removed in Phase 05 | Reintroduction with finalized rules is tracked in [TEN-6](https://linear.app/tenant-aqp/issue/TEN-6). |
+| **Generate a PDF** | `RECEIPT_PDF_ENABLED=false` in `.env` | Flip the env var to `true` and restart the API. See G.20. |
+| **Generate a PDF** | MinIO or Redis container is down | `docker compose up -d`; retry from the modal. |
+| **See the Generar PDF button** | The receipt is a preview (not yet persisted) | Click `Generar Recibo` first. |
 | **Terminate a contract** | Contract is already `Terminado` | Look up the existing termination — there can only be one. |
 | **Add a tenant** with an email that already exists | DB unique constraint on email | Use a different email or look up the existing tenant. |
 | **Add two readings in the same billing month** and see them both contribute | Only the latest by date is used | Adjust the explicit `mes/año` fields or merge readings logically. |
-| **See an advance payment** on a specific month's receipt | Payment date is outside that month's range | Edit the payment's date to fall within the period, or regenerate the receipt of the period containing its date. |
+| **See a payment** on a specific month's receipt | Payment has no `receiptId` link, and its `date` falls outside that month's `[periodStart, periodEnd]` range | Either link the payment to the receipt explicitly (delete and re-record with the Recibo dropdown set, or via the receipt modal's "Registrar Pago"), or change the payment's `date` to fall in the period (only works if the receipt hasn't been issued yet — date-based pickup runs at first issuance only). |
 | **Approve a property delete** | (Not blocked — it just cascades) | Be aware: deleting a property removes all its departments, contracts, payments, extra charges, receipts, and orphan tenants. No undo. |
 
 ---
@@ -1087,18 +1308,33 @@ Whenever someone registers via **Regístrate**, their account is created with st
 A: A reading on day 1 is automatically attributed to the **previous** month, because by the time someone reads the meter on May 1 they're capturing what was consumed during April. If you actually want it billed against May, set "Mes/año de facturación" explicitly in the form. See G.16.
 
 **Q: I added a new payment after marking the receipt as paid. It's not showing on the receipt — what do I do?**
-A: Paid receipts are terminal in this version. The "Regenerar Recibo" button is disabled for them and the server returns `409 RECEIPT_LOCKED` if you bypass the UI. If the payment really should be on this receipt, you cannot edit it in-place. The future revert flow is tracked in [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5).
+A: If you used the global "Pagos" page without picking the Recibo in the dropdown, the payment is standalone — it doesn't touch any receipt's totals. To attach it: delete the payment and re-record it with the Recibo dropdown set, or use the receipt modal's "Registrar Pago" button (it pre-fills the link). The receipt will recompute automatically and the new payment will show in the "Pagos registrados" section. The paid receipt does **not** need to be regenerated for this — the recompute is independent of the items[] snapshot.
 
-**Q: Why can't I edit a paid receipt?**
-A: By design — `paid` is treated as terminal so the receipt represents what was actually settled. Future work (see [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5)) will add a controlled revert path.
+**Q: Why can't I edit a paid receipt's items / totalDue?**
+A: The receipt's `items[]`, `totalDue`, and `period` are snapshotted at issue time. Regenerating a paid receipt is blocked (`409 RECEIPT_LOCKED`). The escape hatch is: delete every linked payment first (this reverts the receipt to `unpaid` automatically), regenerate to update the snapshot, then re-record the payments. The future controlled-revert flow is tracked in [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5).
+
+**Q: I deleted a payment and now the receipt went from "Pagado" back to "No pagado". Is that a bug?**
+A: No — it's the new behavior. When a payment is deleted (or a refund is recorded) and the remaining `totalPayments` drops below `totalDue`, the receipt automatically reverts to `unpaid`, `paidAt`/`paidBy` are cleared, and the receipt becomes regeneratable again (assuming no other payments remain linked). See G.13.
+
+**Q: I don't see the `Generar PDF` button on the receipt modal.**
+A: Either the feature flag is off (`RECEIPT_PDF_ENABLED=false` in `apps/api/.env` — flip to `true` and restart the API) or you're looking at a preview receipt that hasn't been persisted yet. Click `Generar Recibo` to persist, then the PDF button appears. Full details in G.20.
+
+**Q: I clicked `Generar PDF` but the button is stuck on `Generando PDF...`.**
+A: Means a worker isn't picking up the job. Most common causes: (1) MinIO or Redis containers are down — run `docker compose up -d` to bring them up; (2) the API process is running with the feature flag off — restart it after setting `RECEIPT_PDF_ENABLED=true`. After 60 seconds the button times out to `Reintentar PDF`.
+
+**Q: I regenerated a receipt that had a PDF — does the PDF update automatically?**
+A: Yes. The backend detects the prior `pdfKey` and auto-enqueues a fresh render. The modal stays open and the button transitions `Generando PDF...` → `Descargar PDF` when the new file replaces the old one in storage. **No per-version files accumulate** — the storage key is deterministic (`receipts/<contractId>/<receiptId>.pdf`) so each render overwrites the previous one.
+
+**Q: Where are the PDFs actually stored?**
+A: In dev, an S3-compatible local server called **MinIO** (`docker compose` brings it up on `localhost:9000` with a web console at `http://localhost:9001`, login `minioadmin` / `minioadmin`). In production, real AWS S3 — swap by setting/unsetting `AWS_S3_ENDPOINT` (see G.20).
 
 **Q: My tenant overpaid by S/ 200. How do I refund?**
-A: There are two options:
-  - **Apply to next month:** the system does **not** carry over credits automatically. You can either add a manual `cargo extra` of `−200` on next month, or record a `Pago` of type `refund` for the difference when you hand them cash.
-  - **Cash refund now:** record a `Pago` with `tipo = refund` for the overpaid amount. The receipt's `totalPayments` drops by that amount (because `balance = totalPayments − totalDue`).
+A: Two options:
+  - **Apply to next month manually:** the system does **not** carry over credits automatically. You can add a `cargo extra` of `−200` on next month's receipt to net it out.
+  - **Cash refund now:** record a `Pago` with `tipo = refund`, amount = `−200`, and link it to the same receipt via the Recibo dropdown (or use the receipt modal's "Registrar Pago" button). The receipt's `totalPayments` drops by 200, `balance` recomputes; if it goes below `totalDue`, the receipt reverts to `unpaid`.
 
 **Q: A tenant gave me a partial payment. How do I record it?**
-A: Just add a `Pago` for the actual amount. The receipt's balance will reflect "tenant still owes the difference". (Mora generation was removed in Phase 05 — see [TEN-6](https://linear.app/tenant-aqp/issue/TEN-6).)
+A: Open the receipt and click "Registrar Pago" — it pre-fills the outstanding balance, but you can change the amount to whatever was actually paid. The receipt stays `unpaid` and shows the remaining balance. Record additional payments later; the receipt auto-flips to `paid` once the sum covers `totalDue`. (Mora generation was removed in Phase 05 — see [TEN-6](https://linear.app/tenant-aqp/issue/TEN-6).)
 
 **Q: I created a department but forgot to set the initial reading. Can I add it later?**
 A: Yes. Go to **Lecturas → +**, pick the meter (which may not exist yet — you may need to create one via **Medidores** first), enter the historical reading with the historical date. The next reading you add will compute consumption against it.
@@ -1125,7 +1361,7 @@ A: The receipt was generated **before** the extra charge was added. Click **Rege
 A: That's how payments are displayed inside the receipt's `items[]` — with a minus sign so the math (`totalPayments − totalDue`) works out visually. It is **not** an extra charge.
 
 **Q: Can I export receipts as PDF?**
-A: Not yet. Receipts live in the database with their `items[]` array; rendering to PDF is future work.
+A: Yes — see G.20. Click `Generar PDF` in the receipt modal. The button transitions to `Descargar PDF` when the render completes. The PDF is stored in S3-compatible object storage (MinIO in dev, AWS S3 in prod) and auto-regenerated whenever the receipt is regenerated.
 
 ---
 

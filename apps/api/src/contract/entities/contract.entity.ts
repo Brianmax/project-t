@@ -1,4 +1,10 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { Tenant } from '../../tenant/entities/tenant.entity';
 import { Department } from '../../department/entities/department.entity';
 
@@ -28,16 +34,18 @@ export class Contract {
   guaranteeDeposit: number; // Security deposit
 
   @ManyToOne(() => Tenant, (tenant) => tenant.id)
+  @JoinColumn({ name: 'tenant_id' })
   tenant: Tenant;
 
   @Column({ name: 'tenant_id', type: 'uuid' })
-  tenantId: string; // Foreign key for Tenant
+  tenantId: string;
 
   @ManyToOne(() => Department, (department) => department.id)
+  @JoinColumn({ name: 'department_id' })
   department: Department;
 
   @Column({ name: 'department_id', type: 'uuid' })
-  departmentId: string; // Foreign key for Department
+  departmentId: string;
 
   @Column({
     type: 'enum',
