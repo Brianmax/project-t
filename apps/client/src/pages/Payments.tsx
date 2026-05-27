@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CreditCard, DollarSign } from 'lucide-react';
+import { CreditCard, DollarSign, FileDown } from 'lucide-react';
 import { apiFetch, apiPost } from '../lib/api';
 import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
@@ -18,6 +18,7 @@ import DatePicker from '../components/DatePicker';
 import Dropdown from '../components/Dropdown';
 import { showSuccess, showError } from '../lib/toast';
 import { formatDate } from '../lib/utils';
+import PaymentReportModal from '../components/payments/PaymentReportModal';
 
 interface Contract {
   id: string;
@@ -25,12 +26,7 @@ interface Contract {
   department: { name: string };
 }
 
-type PaymentMethod =
-  | 'cash'
-  | 'bank_transfer'
-  | 'yape'
-  | 'plin'
-  | 'other';
+type PaymentMethod = 'cash' | 'bank_transfer' | 'yape' | 'plin' | 'other';
 
 interface UnpaidReceipt {
   id: string;
@@ -97,6 +93,7 @@ export default function Payments() {
   const [contractId, setContractId] = useState('');
   const [receiptId, setReceiptId] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -196,6 +193,15 @@ export default function Payments() {
         subtitle={`${payments.length} pagos registrados`}
         onAdd={() => setModalOpen(true)}
         addLabel="Nuevo Pago"
+        actions={
+          <button
+            onClick={() => setReportModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-xl border border-border text-on-surface-medium hover:bg-surface-alt transition-colors"
+          >
+            <FileDown size={15} />
+            <span className="hidden sm:inline">Generar reporte</span>
+          </button>
+        }
       />
 
       {payments.length > 0 && (
@@ -366,7 +372,13 @@ export default function Payments() {
             <div className="px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-700/40 text-[13px]">
               <span className="text-blue-700 dark:text-blue-300 font-medium">
                 Saldo del contrato: S/{' '}
-                <span className={ledger.balance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>
+                <span
+                  className={
+                    ledger.balance >= 0
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-red-600 dark:text-red-400'
+                  }
+                >
                   {ledger.balance.toFixed(2)}
                 </span>
               </span>
@@ -400,9 +412,7 @@ export default function Payments() {
                 value={method}
                 onChange={(v) => setMethod(v as PaymentMethod)}
                 options={(
-                  Object.entries(methodLabels) as Array<
-                    [PaymentMethod, string]
-                  >
+                  Object.entries(methodLabels) as Array<[PaymentMethod, string]>
                 ).map(([k, v]) => ({ value: k, label: v }))}
               />
             </div>
@@ -443,6 +453,12 @@ export default function Payments() {
           </button>
         </form>
       </Modal>
+
+      <PaymentReportModal
+        isOpen={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        contracts={contracts}
+      />
     </div>
   );
 }

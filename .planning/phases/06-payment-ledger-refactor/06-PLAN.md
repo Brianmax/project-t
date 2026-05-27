@@ -12,18 +12,18 @@ This is a plan only. No source files are modified by this document.
 
 ## Decisions captured up front
 
-| # | Decision | Source |
-|---|---|---|
-| 1 | Single `Payment` kind. `PaymentType` enum (`rent / water / light / advance / guarantee / refund`) is removed entirely. | User S1–S3 |
-| 2 | Refunds are plain payments with a negative `amount`. No special enum value, no separate flow. | User |
-| 3 | `Contract.advancePayment` and `Contract.guaranteeDeposit` remain unchanged. They are deposits on the contract, **not** credit-ledger entries. | User |
-| 4 | `Payment.receiptId` becomes a **UX hint only** ("operator said this payment was made on the day of receipt X"). It does NOT participate in any totals calculation. Kept in the schema for audit and for the existing per-receipt payments list. | New (a) |
-| 5 | Balance is **derived on read**, not stored. Formula: `SUM(Payment.amount where contract_id = X) − SUM(ReceiptEntity.totalDue where contract_id = X and receipt is issued)`. No new column. | New (a) |
-| 6 | Auto-apply runs **eagerly inside the same DB transaction** on every Payment create/update/delete AND on every Receipt issue/regenerate. Single function: `ContractLedgerService.recalculate(contractId, manager)`. | New (b) |
-| 7 | Application order is **FIFO by `(year ASC, month ASC)`**, ties broken by `ReceiptEntity.createdAt ASC`. | New (c) |
-| 8 | Receipt status stays **binary** (`paid` / `unpaid`). No "partial" state. A receipt is `paid` iff cumulative FIFO-applied credit ≥ `totalDue`. | New (d) |
-| 9 | Deleting a payment runs `recalculate()`, which **may flip a paid receipt back to unpaid** and clear its `paidAt` / `paidBy`. Deterministic. | New (e) |
-| 10 | One-shot migration script (`apps/api/src/seed/migrate-to-ledger.ts`) recomputes everything; rollback path is a SQL dump of the dropped `payment.type` column. | New (f) |
+| #   | Decision                                                                                                                                                                                                                                        | Source     |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| 1   | Single `Payment` kind. `PaymentType` enum (`rent / water / light / advance / guarantee / refund`) is removed entirely.                                                                                                                          | User S1–S3 |
+| 2   | Refunds are plain payments with a negative `amount`. No special enum value, no separate flow.                                                                                                                                                   | User       |
+| 3   | `Contract.advancePayment` and `Contract.guaranteeDeposit` remain unchanged. They are deposits on the contract, **not** credit-ledger entries.                                                                                                   | User       |
+| 4   | `Payment.receiptId` becomes a **UX hint only** ("operator said this payment was made on the day of receipt X"). It does NOT participate in any totals calculation. Kept in the schema for audit and for the existing per-receipt payments list. | New (a)    |
+| 5   | Balance is **derived on read**, not stored. Formula: `SUM(Payment.amount where contract_id = X) − SUM(ReceiptEntity.totalDue where contract_id = X and receipt is issued)`. No new column.                                                      | New (a)    |
+| 6   | Auto-apply runs **eagerly inside the same DB transaction** on every Payment create/update/delete AND on every Receipt issue/regenerate. Single function: `ContractLedgerService.recalculate(contractId, manager)`.                              | New (b)    |
+| 7   | Application order is **FIFO by `(year ASC, month ASC)`**, ties broken by `ReceiptEntity.createdAt ASC`.                                                                                                                                         | New (c)    |
+| 8   | Receipt status stays **binary** (`paid` / `unpaid`). No "partial" state. A receipt is `paid` iff cumulative FIFO-applied credit ≥ `totalDue`.                                                                                                   | New (d)    |
+| 9   | Deleting a payment runs `recalculate()`, which **may flip a paid receipt back to unpaid** and clear its `paidAt` / `paidBy`. Deterministic.                                                                                                     | New (e)    |
+| 10  | One-shot migration script (`apps/api/src/seed/migrate-to-ledger.ts`) recomputes everything; rollback path is a SQL dump of the dropped `payment.type` column.                                                                                   | New (f)    |
 
 ---
 
@@ -36,13 +36,13 @@ previous has shipped (merged + deployed to the dev DB). Skipping forward will
 leave the system in a half-built state where receipt totals and the ledger
 disagree.
 
-| Order | Ticket | Scope | Blocked by | Touches |
-|---|---|---|---|---|
-| 1 | **[TEN-19](https://linear.app/tenant-aqp/issue/TEN-19)** — 06.1 Schema: drop `PaymentType` | Remove the enum from entity, DTOs, services, and every client surface. One kind of payment. | — | `payment.entity.ts`, `*.dto.ts`, `payment.service.ts`, `Payments.tsx`, `PropertyDetail.tsx`, `TenantDashboard.tsx` |
-| 2 | **[TEN-20](https://linear.app/tenant-aqp/issue/TEN-20)** — 06.2 `ContractLedgerService.computeLedger` + `GET /contracts/:id/ledger` | Read-only ledger snapshot. No writes back to receipts yet. | TEN-19 | new `contract-ledger.service.ts`, `contract.controller.ts` |
-| 3 | **[TEN-21](https://linear.app/tenant-aqp/issue/TEN-21)** — 06.3 Receipt projector (`recalculate`) | Same service gains `recalculate()` that writes `status / paidAt / totalPayments / balance` from the FIFO walk. Old roll-up paths deleted. | TEN-20 | `contract-ledger.service.ts`, `receipt.service.ts`, `payment.service.ts` (delete `recomputeReceipt`) |
-| 4 | **[TEN-22](https://linear.app/tenant-aqp/issue/TEN-22)** — 06.4 Wire `recalculate` into every write; remove "Marcar como pagado" | Hook `recalculate()` into `PaymentService.{create,update,remove}` and `ReceiptService.issueReceipt`. Delete the manual status-flip route and button. | TEN-21 | `payment.service.ts`, `receipt.service.ts`, `contract.controller.ts`, `DepartmentBilling.tsx`, `OPERATOR_GUIDE.md` |
-| 5 | **[TEN-23](https://linear.app/tenant-aqp/issue/TEN-23)** — 06.5 Migration script + deletion semantics + rollback | One-shot script that backs up `payment.type`, drops the column, and calls `recalculate()` for every contract. New deletion tests. Rollback runbook. | TEN-22 | new `seed/migrate-to-ledger.ts`, `payment.service.spec.ts`, `apps/api/package.json`, `CLAUDE.md` |
+| Order | Ticket                                                                                                                              | Scope                                                                                                                                                | Blocked by | Touches                                                                                                            |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| 1     | **[TEN-19](https://linear.app/tenant-aqp/issue/TEN-19)** — 06.1 Schema: drop `PaymentType`                                          | Remove the enum from entity, DTOs, services, and every client surface. One kind of payment.                                                          | —          | `payment.entity.ts`, `*.dto.ts`, `payment.service.ts`, `Payments.tsx`, `PropertyDetail.tsx`, `TenantDashboard.tsx` |
+| 2     | **[TEN-20](https://linear.app/tenant-aqp/issue/TEN-20)** — 06.2 `ContractLedgerService.computeLedger` + `GET /contracts/:id/ledger` | Read-only ledger snapshot. No writes back to receipts yet.                                                                                           | TEN-19     | new `contract-ledger.service.ts`, `contract.controller.ts`                                                         |
+| 3     | **[TEN-21](https://linear.app/tenant-aqp/issue/TEN-21)** — 06.3 Receipt projector (`recalculate`)                                   | Same service gains `recalculate()` that writes `status / paidAt / totalPayments / balance` from the FIFO walk. Old roll-up paths deleted.            | TEN-20     | `contract-ledger.service.ts`, `receipt.service.ts`, `payment.service.ts` (delete `recomputeReceipt`)               |
+| 4     | **[TEN-22](https://linear.app/tenant-aqp/issue/TEN-22)** — 06.4 Wire `recalculate` into every write; remove "Marcar como pagado"    | Hook `recalculate()` into `PaymentService.{create,update,remove}` and `ReceiptService.issueReceipt`. Delete the manual status-flip route and button. | TEN-21     | `payment.service.ts`, `receipt.service.ts`, `contract.controller.ts`, `DepartmentBilling.tsx`, `OPERATOR_GUIDE.md` |
+| 5     | **[TEN-23](https://linear.app/tenant-aqp/issue/TEN-23)** — 06.5 Migration script + deletion semantics + rollback                    | One-shot script that backs up `payment.type`, drops the column, and calls `recalculate()` for every contract. New deletion tests. Rollback runbook.  | TEN-22     | new `seed/migrate-to-ledger.ts`, `payment.service.spec.ts`, `apps/api/package.json`, `CLAUDE.md`                   |
 
 ### Why this order
 
@@ -76,6 +76,7 @@ disagree.
 ## 1. Mental model (read this before the rest)
 
 The system today asks two questions in awkwardly coupled ways:
+
 - "How much has this tenant paid?"
 - "Is this specific receipt paid?"
 
@@ -97,12 +98,12 @@ Per-receipt paid?
 
 The three user scenarios in the new vocabulary:
 
-| Scenario | Start `totalBilled` | Action | End `totalPaid` | `balance` | Receipt status |
-|---|---|---|---|---|---|
-| S1 | 1400 | Pay 1400 | 1400 | 0 | paid |
-| S2 | 1400 | Pay 700  | 700  | −700 | unpaid (700 of 1400 covered) |
-| S3a | 1400 | Pay 1500 | 1500 | +100 | paid |
-| S3b | 1400 + 1400 = 2800 | Pay 1300 more | 2800 | 0 | both paid (the +100 credit absorbed the 100 shortfall) |
+| Scenario | Start `totalBilled` | Action        | End `totalPaid` | `balance` | Receipt status                                         |
+| -------- | ------------------- | ------------- | --------------- | --------- | ------------------------------------------------------ |
+| S1       | 1400                | Pay 1400      | 1400            | 0         | paid                                                   |
+| S2       | 1400                | Pay 700       | 700             | −700      | unpaid (700 of 1400 covered)                           |
+| S3a      | 1400                | Pay 1500      | 1500            | +100      | paid                                                   |
+| S3b      | 1400 + 1400 = 2800  | Pay 1300 more | 2800            | 0         | both paid (the +100 credit absorbed the 100 shortfall) |
 
 That is the entire model. Everything below is plumbing.
 
@@ -160,18 +161,18 @@ interface LedgerSnapshot {
   contractId: string;
   totalPaid: number;
   totalBilled: number;
-  balance: number;                          // totalPaid − totalBilled
+  balance: number; // totalPaid − totalBilled
   receipts: Array<{
     id: string;
     month: number;
     year: number;
     totalDue: number;
-    appliedCredit: number;                  // how much of totalPaid was consumed by this receipt
-    remaining: number;                      // totalDue − appliedCredit (0 if paid)
+    appliedCredit: number; // how much of totalPaid was consumed by this receipt
+    remaining: number; // totalDue − appliedCredit (0 if paid)
     status: 'paid' | 'unpaid';
     paidAt: Date | null;
   }>;
-  creditRemaining: number;                  // balance not yet consumed by any receipt (positive surplus)
+  creditRemaining: number; // balance not yet consumed by any receipt (positive surplus)
 }
 ```
 
@@ -198,22 +199,22 @@ interface LedgerSnapshot {
 
 ### Who calls `recalculate`
 
-| Caller | When |
-|---|---|
-| `PaymentService.create` | After insert, inside the existing transaction. |
-| `PaymentService.update` | After save, inside the existing transaction. If `contractId` changed, recalculate BOTH old and new contracts. |
-| `PaymentService.remove` | After delete, inside the existing transaction. |
-| `ReceiptService.issueReceipt` | After save, inside the existing transaction. |
-| `migrate-to-ledger.ts` | Once per contract, after the column drop. |
+| Caller                        | When                                                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `PaymentService.create`       | After insert, inside the existing transaction.                                                                |
+| `PaymentService.update`       | After save, inside the existing transaction. If `contractId` changed, recalculate BOTH old and new contracts. |
+| `PaymentService.remove`       | After delete, inside the existing transaction.                                                                |
+| `ReceiptService.issueReceipt` | After save, inside the existing transaction.                                                                  |
+| `migrate-to-ledger.ts`        | Once per contract, after the column drop.                                                                     |
 
 ### Removed code
 
-| File | What goes |
-|---|---|
-| `PaymentService.STANDALONE_PAYMENT_TYPES`, `assertTypeAndAmount` | Replaced by a single `amount !== 0` check. |
-| `PaymentService.recomputeReceipt` | Subsumed by `ContractLedgerService.recalculate`. |
+| File                                                                                       | What goes                                                                                                                                               |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PaymentService.STANDALONE_PAYMENT_TYPES`, `assertTypeAndAmount`                           | Replaced by a single `amount !== 0` check.                                                                                                              |
+| `PaymentService.recomputeReceipt`                                                          | Subsumed by `ContractLedgerService.recalculate`.                                                                                                        |
 | `ReceiptService.calculateReceipt` payments-rollup branch (lines 379–474 after BUG-001 fix) | The receipt no longer computes its own `totalPayments`/`balance`. Snapshot is just rent + utilities + extra charges. The ledger fills the totals after. |
-| `ReceiptService.findUnpaidReceipts` filter logic | Stays the same — reads from the projector-maintained `status` column. |
+| `ReceiptService.findUnpaidReceipts` filter logic                                           | Stays the same — reads from the projector-maintained `status` column.                                                                                   |
 
 ---
 
@@ -221,25 +222,25 @@ interface LedgerSnapshot {
 
 ### New endpoints
 
-| Route | Returns |
-|---|---|
+| Route                       | Returns                            |
+| --------------------------- | ---------------------------------- |
 | `GET /contracts/:id/ledger` | `LedgerSnapshot` for the contract. |
 
 ### Unchanged endpoints
 
-| Route | Note |
-|---|---|
-| `POST /payments`, `PATCH /payments/:id`, `DELETE /payments/:id` | Behavior unchanged externally; DTOs drop `type`. |
-| `GET /payments`, `GET /payments?contractId&receiptId` | Same response shape minus the `type` field. |
-| `GET /receipts/:receiptId/payments` | Unchanged (`payment.receiptId` still indexes this list). |
-| `GET /contracts/:id/receipts?month&year` (preview) | Returns `totalPayments` and `balance` computed from the ledger snapshot, not from the receipt row. |
-| `POST /contracts/:id/receipts` (issue) | Persists receipt with `totalDue` only; `recalculate()` populates totals/status. |
-| `GET /contracts/receipts/unpaid` | Reads `status = UNPAID` from the projector. |
+| Route                                                           | Note                                                                                               |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `POST /payments`, `PATCH /payments/:id`, `DELETE /payments/:id` | Behavior unchanged externally; DTOs drop `type`.                                                   |
+| `GET /payments`, `GET /payments?contractId&receiptId`           | Same response shape minus the `type` field.                                                        |
+| `GET /receipts/:receiptId/payments`                             | Unchanged (`payment.receiptId` still indexes this list).                                           |
+| `GET /contracts/:id/receipts?month&year` (preview)              | Returns `totalPayments` and `balance` computed from the ledger snapshot, not from the receipt row. |
+| `POST /contracts/:id/receipts` (issue)                          | Persists receipt with `totalDue` only; `recalculate()` populates totals/status.                    |
+| `GET /contracts/receipts/unpaid`                                | Reads `status = UNPAID` from the projector.                                                        |
 
 ### Removed surface
 
-| Route | Why |
-|---|---|
+| Route                                                                     | Why                                                                                                |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | `PATCH /contracts/:id/receipts/status` ("Marcar como pagado" manual flip) | Status is now derived from payments. There is no manual "mark as paid" — record a payment instead. |
 
 This is a behavior change for operators: paying = recording a payment of the
@@ -368,13 +369,13 @@ backend revert lands? — **no**, the simpler answer: rollback together).
 
 ## 9. Risks
 
-| Risk | Mitigation |
-|---|---|
-| FIFO order surprises operator who expected "apply to receipt I clicked on" | Document in OPERATOR_GUIDE.md §G (new subsection "Pagos y el saldo del inquilino"). Show the ledger snapshot in the payment modal so the operator sees where the money landed. |
-| `recalculate()` becomes slow on contracts with many receipts | Acceptable today (single tenant, max ~24 receipts per contract). Index `(contract_id, year, month)` on `receipt_entity` to keep it sub-millisecond. |
-| Migration script fails mid-way leaving partial state | Wrap the whole script in a single transaction. On failure, `ROLLBACK;` returns the DB to pre-migration state. Backup SQL dump is the second line of defense. |
-| PDF renderer references `totalPayments`/`balance` and breaks if those columns drift after the projector runs | Add a contract test (`receipt-pdf.renderer.spec.ts`) asserting the renderer reads `paidAt` and not raw `payment.type`. Already partially covered. |
-| Manual "Marcar como pagado" removal confuses operators mid-month | OPERATOR_GUIDE update + a small in-modal banner on first run: "El estado del recibo ahora se calcula automáticamente desde los pagos. Para marcar pagado, registra el pago." |
+| Risk                                                                                                         | Mitigation                                                                                                                                                                     |
+| ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| FIFO order surprises operator who expected "apply to receipt I clicked on"                                   | Document in OPERATOR_GUIDE.md §G (new subsection "Pagos y el saldo del inquilino"). Show the ledger snapshot in the payment modal so the operator sees where the money landed. |
+| `recalculate()` becomes slow on contracts with many receipts                                                 | Acceptable today (single tenant, max ~24 receipts per contract). Index `(contract_id, year, month)` on `receipt_entity` to keep it sub-millisecond.                            |
+| Migration script fails mid-way leaving partial state                                                         | Wrap the whole script in a single transaction. On failure, `ROLLBACK;` returns the DB to pre-migration state. Backup SQL dump is the second line of defense.                   |
+| PDF renderer references `totalPayments`/`balance` and breaks if those columns drift after the projector runs | Add a contract test (`receipt-pdf.renderer.spec.ts`) asserting the renderer reads `paidAt` and not raw `payment.type`. Already partially covered.                              |
+| Manual "Marcar como pagado" removal confuses operators mid-month                                             | OPERATOR_GUIDE update + a small in-modal banner on first run: "El estado del recibo ahora se calcula automáticamente desde los pagos. Para marcar pagado, registra el pago."   |
 
 ---
 

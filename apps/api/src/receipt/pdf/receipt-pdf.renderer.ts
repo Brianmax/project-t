@@ -242,12 +242,10 @@ export class ReceiptPdfRenderer {
           .fontSize(10)
           .text(`Saldo pendiente · ${item.period}`, left + 12, y);
 
-        doc
-          .fillColor(COLOR.negative)
-          .text(currency.format(amount), left, y, {
-            width: W - 12,
-            align: 'right',
-          });
+        doc.fillColor(COLOR.negative).text(currency.format(amount), left, y, {
+          width: W - 12,
+          align: 'right',
+        });
         y += 16;
       });
       y += 8;
@@ -335,7 +333,8 @@ export class ReceiptPdfRenderer {
     // Line: Saldo (emphasized)
     lineY = hasCarryForward ? 88 : 70;
     const totalBalance = balance - totalCarryForward;
-    const totalBalanceColor = totalBalance < 0 ? COLOR.negative : COLOR.positive;
+    const totalBalanceColor =
+      totalBalance < 0 ? COLOR.negative : COLOR.positive;
 
     doc
       .fillColor(COLOR.ink)

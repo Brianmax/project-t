@@ -1,5 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Receipt as ReceiptIcon, Building2, DoorOpen, Search, Eye } from 'lucide-react';
+import {
+  Receipt as ReceiptIcon,
+  Building2,
+  DoorOpen,
+  Search,
+  Eye,
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../lib/api';
 import PageHeader from '../components/PageHeader';
@@ -71,7 +77,9 @@ export default function Receipts() {
   useEffect(() => {
     if (selectedDeptId) {
       setReceiptsLoading(true);
-      apiFetch<ReceiptData[]>(`/contracts/receipts?departmentId=${selectedDeptId}`)
+      apiFetch<ReceiptData[]>(
+        `/contracts/receipts?departmentId=${selectedDeptId}`,
+      )
         .then(setReceipts)
         .finally(() => setReceiptsLoading(false));
     } else {
@@ -141,7 +149,9 @@ export default function Receipts() {
       ) : receiptsLoading ? (
         <div className="flex flex-col items-center justify-center py-12">
           <div className="w-10 h-10 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
-          <p className="mt-4 text-on-surface-muted text-sm">Cargando recibos...</p>
+          <p className="mt-4 text-on-surface-muted text-sm">
+            Cargando recibos...
+          </p>
         </div>
       ) : receipts.length === 0 ? (
         <EmptyState
@@ -181,7 +191,9 @@ export default function Receipts() {
                       {r.status === 'paid' ? 'Pagado' : 'Pendiente'}
                     </span>
                   </td>
-                  <td className={`${tableCellCls} font-semibold text-on-surface`}>
+                  <td
+                    className={`${tableCellCls} font-semibold text-on-surface`}
+                  >
                     S/ {r.totalDue.toFixed(2)}
                   </td>
                   <td className={`${tableCellCls} text-right`}>

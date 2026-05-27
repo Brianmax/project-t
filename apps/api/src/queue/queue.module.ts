@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { RECEIPT_PDF_QUEUE } from './queue.constants';
+import { RECEIPT_PDF_QUEUE, SEAL_SYNC_QUEUE } from './queue.constants';
 import { assertQueueConfig } from './queue-config';
 
 @Module({
@@ -23,15 +23,25 @@ import { assertQueueConfig } from './queue-config';
         };
       },
     }),
-    BullModule.registerQueue({
-      name: RECEIPT_PDF_QUEUE,
-      defaultJobOptions: {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 1000 },
-        removeOnComplete: { age: 86400 },
-        removeOnFail: false,
+    BullModule.registerQueue(
+      {
+        name: RECEIPT_PDF_QUEUE,
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 1000 },
+          removeOnComplete: { age: 86400 },
+          removeOnFail: false,
+        },
       },
-    }),
+      {
+        name: SEAL_SYNC_QUEUE,
+        defaultJobOptions: {
+          attempts: 1,
+          removeOnComplete: { age: 86400 },
+          removeOnFail: false,
+        },
+      },
+    ),
   ],
   exports: [BullModule],
 })

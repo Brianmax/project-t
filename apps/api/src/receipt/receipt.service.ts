@@ -386,10 +386,11 @@ export class ReceiptService {
         snap.year < year || (snap.year === year && snap.month < month);
 
       if (isPast && snap.remaining > 0) {
-        const snapPeriod = new Date(snap.year, snap.month - 1, 1).toLocaleString(
-          'es-PE',
-          { month: 'long', year: 'numeric' },
-        );
+        const snapPeriod = new Date(
+          snap.year,
+          snap.month - 1,
+          1,
+        ).toLocaleString('es-PE', { month: 'long', year: 'numeric' });
         carryForwardDetails.push({
           period: snapPeriod,
           balance: snap.remaining,

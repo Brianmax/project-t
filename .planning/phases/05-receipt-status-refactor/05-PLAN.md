@@ -8,16 +8,16 @@ This is a plan only. No source files are modified by this document.
 
 ## Decisions captured up front
 
-| # | Decision | Source |
-|---|---|---|
-| 1 | `paid` is operator-flipped (manual), **not** auto-derived from balance | Confirmed |
-| 2 | Generating a receipt persists immediately as `unpaid` — no Confirmar/Aprobar step | Confirmed |
-| 3 | Existing receipt rows: wipe-and-reseed (dev DB) — no migration script | Confirmed |
-| 4 | `paid` is **terminal** in this phase: regenerar disabled, status-flip rejected, items locked | Q1 |
-| 5 | Revert `paid → unpaid` not allowed in this phase (tech debt — [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5)) | Q3 |
-| 6 | Late-fee (mora) logic removed entirely (on hold — [TEN-6](https://linear.app/tenant-aqp/issue/TEN-6)) | Q4 |
-| 7 | Status flip records `paidAt: timestamptz` and `paidBy: uuid` columns | Q6 |
-| 8 | Marking paid while `balance < 0` is silently allowed for now — [TEN-7](https://linear.app/tenant-aqp/issue/TEN-7) (revisit after payment-recording UI lands) | Q2 |
+| #   | Decision                                                                                                                                                     | Source    |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
+| 1   | `paid` is operator-flipped (manual), **not** auto-derived from balance                                                                                       | Confirmed |
+| 2   | Generating a receipt persists immediately as `unpaid` — no Confirmar/Aprobar step                                                                            | Confirmed |
+| 3   | Existing receipt rows: wipe-and-reseed (dev DB) — no migration script                                                                                        | Confirmed |
+| 4   | `paid` is **terminal** in this phase: regenerar disabled, status-flip rejected, items locked                                                                 | Q1        |
+| 5   | Revert `paid → unpaid` not allowed in this phase (tech debt — [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5))                                            | Q3        |
+| 6   | Late-fee (mora) logic removed entirely (on hold — [TEN-6](https://linear.app/tenant-aqp/issue/TEN-6))                                                        | Q4        |
+| 7   | Status flip records `paidAt: timestamptz` and `paidBy: uuid` columns                                                                                         | Q6        |
+| 8   | Marking paid while `balance < 0` is silently allowed for now — [TEN-7](https://linear.app/tenant-aqp/issue/TEN-7) (revisit after payment-recording UI lands) | Q2        |
 
 ---
 
@@ -34,6 +34,7 @@ enum ReceiptStatus {
 ```
 
 Transitions:
+
 - `pending_review` → `approved` (Aprobar)
 - `pending_review` → `denied` (Denegar)
 - `denied` → `pending_review` (Regenerar)
@@ -49,6 +50,7 @@ enum ReceiptStatus {
 ```
 
 Transitions:
+
 - `(new)` → `unpaid` (Generar Recibo)
 - `unpaid` → `paid` (Marcar como pagado — terminal)
 - `unpaid` → `unpaid` (Regenerar — overwrites items, totals; stays unpaid)
@@ -108,23 +110,23 @@ Re-implementation waits on stakeholder input documented in TEN-6.
 
 **Status pill colors:**
 
-| Old | New |
-|---|---|
-| `pending_review` (amber) | — removed |
-| `approved` (emerald) | `paid` (emerald) |
-| `denied` (red) | — removed |
-| — | `unpaid` (amber) |
+| Old                      | New              |
+| ------------------------ | ---------------- |
+| `pending_review` (amber) | — removed        |
+| `approved` (emerald)     | `paid` (emerald) |
+| `denied` (red)           | — removed        |
+| —                        | `unpaid` (amber) |
 
 **Modal action buttons:**
 
-| Before | After |
-|---|---|
-| `Aprobar` (when pending) | — gone |
-| `Denegar` (when pending) | — gone |
-| — | `Marcar como pagado` (when unpaid) |
-| — | *Revert button — NOT in this phase (tech debt, [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5))* |
-| `Enviar por WhatsApp` (placeholder) | unchanged |
-| `Descargar PDF` (phase 04) | always available once row exists |
+| Before                              | After                                                                                               |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `Aprobar` (when pending)            | — gone                                                                                              |
+| `Denegar` (when pending)            | — gone                                                                                              |
+| —                                   | `Marcar como pagado` (when unpaid)                                                                  |
+| —                                   | _Revert button — NOT in this phase (tech debt, [TEN-5](https://linear.app/tenant-aqp/issue/TEN-5))_ |
+| `Enviar por WhatsApp` (placeholder) | unchanged                                                                                           |
+| `Descargar PDF` (phase 04)          | always available once row exists                                                                    |
 
 **Paid receipts are read-only:**
 
@@ -151,13 +153,13 @@ Re-implementation waits on stakeholder input documented in TEN-6.
 
 Several sections become wrong after this refactor:
 
-| Section | Edit |
-|---|---|
-| B (Vocabulary) | Remove "Pendiente de revisión", "Aprobado", "Denegado". Add "No pagado", "Pagado". |
-| G.7 (Mora generator) | **Delete the section entirely.** Mora logic is removed in this phase; future reintroduction tracked in TEN-6. |
-| G.10–G.13 (status machine, Aprobar/Denegar, regeneration gotcha, status diagram) | Replace with the new 2-state model. The Mermaid stateDiagram in G.13 collapses to two nodes with one transition (`unpaid → paid`). Add note: "paid is terminal in this phase; revert is tracked in TEN-5." |
-| K.2 (Receipt-completeness gate) | Update copy: counts any receipt with status `paid` or `unpaid`. |
-| N (FAQ) | Drop the "approved receipt won't regenerate — how do I refresh?" Q&A; the answer is now "just click Generar Recibo (only works on unpaid rows)." Add: "Why can't I edit a paid receipt? Paid is terminal in this phase — see TEN-5 for the planned revert flow." |
+| Section                                                                          | Edit                                                                                                                                                                                                                                                             |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B (Vocabulary)                                                                   | Remove "Pendiente de revisión", "Aprobado", "Denegado". Add "No pagado", "Pagado".                                                                                                                                                                               |
+| G.7 (Mora generator)                                                             | **Delete the section entirely.** Mora logic is removed in this phase; future reintroduction tracked in TEN-6.                                                                                                                                                    |
+| G.10–G.13 (status machine, Aprobar/Denegar, regeneration gotcha, status diagram) | Replace with the new 2-state model. The Mermaid stateDiagram in G.13 collapses to two nodes with one transition (`unpaid → paid`). Add note: "paid is terminal in this phase; revert is tracked in TEN-5."                                                       |
+| K.2 (Receipt-completeness gate)                                                  | Update copy: counts any receipt with status `paid` or `unpaid`.                                                                                                                                                                                                  |
+| N (FAQ)                                                                          | Drop the "approved receipt won't regenerate — how do I refresh?" Q&A; the answer is now "just click Generar Recibo (only works on unpaid rows)." Add: "Why can't I edit a paid receipt? Paid is terminal in this phase — see TEN-5 for the planned revert flow." |
 
 I will produce these doc edits as part of implementation, not as a separate planning phase.
 
@@ -194,14 +196,14 @@ The only cross-phase coupling is `receipt.service.ts → issueReceipt()`: Phase 
 
 All resolved. Deferrals are tracked in Linear:
 
-| # | Resolution |
-|---|---|
-| Q1 | **Paid is terminal.** Regenerar disabled for `paid` rows; server enforces 409 `RECEIPT_LOCKED`. |
-| Q2 | **Silent-allow** (no warning). Revisit once tenant-payment recording UI exists — **[TEN-7](https://linear.app/tenant-aqp/issue/TEN-7)**. |
-| Q3 | **No revert in this phase.** Tech debt — **TEN-5**. |
-| Q4 | **Mora logic removed entirely.** Stakeholder input required before reintroducing — **TEN-6**. |
-| Q5 | Keep "Recibos Pendientes de Pago" title. |
-| Q6 | Add `paidAt: timestamptz` + `paidBy: uuid` columns. `updateReceiptStatus` writes them from the auth context. |
+| #   | Resolution                                                                                                                               |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Q1  | **Paid is terminal.** Regenerar disabled for `paid` rows; server enforces 409 `RECEIPT_LOCKED`.                                          |
+| Q2  | **Silent-allow** (no warning). Revisit once tenant-payment recording UI exists — **[TEN-7](https://linear.app/tenant-aqp/issue/TEN-7)**. |
+| Q3  | **No revert in this phase.** Tech debt — **TEN-5**.                                                                                      |
+| Q4  | **Mora logic removed entirely.** Stakeholder input required before reintroducing — **TEN-6**.                                            |
+| Q5  | Keep "Recibos Pendientes de Pago" title.                                                                                                 |
+| Q6  | Add `paidAt: timestamptz` + `paidBy: uuid` columns. `updateReceiptStatus` writes them from the auth context.                             |
 
 ---
 

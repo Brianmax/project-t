@@ -23,6 +23,7 @@ import { apiFetch, apiPost, apiPatch } from '../lib/api';
 import { PageSkeleton } from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
+import SealCard from '../components/seal/SealCard';
 import { showSuccess, showError } from '../lib/toast';
 import { formatDate } from '../lib/utils';
 import {
@@ -42,6 +43,10 @@ interface Property {
   address: string;
   lightCostPerUnit: number;
   waterCostPerUnit: number;
+  sealSupplyCode: string | null;
+  sealBranchCode: string | null;
+  sealLastSyncedAt: string | null;
+  sealLastSyncError: string | null;
 }
 
 interface ConsumptionData {
@@ -205,9 +210,11 @@ export default function PropertyDetail() {
     () =>
       contracts
         .filter(isVisibleTenantContract)
-        .sort((a, b) =>
-          (a.department?.name || '').localeCompare(b.department?.name || '') ||
-          a.startDate.localeCompare(b.startDate),
+        .sort(
+          (a, b) =>
+            (a.department?.name || '').localeCompare(
+              b.department?.name || '',
+            ) || a.startDate.localeCompare(b.startDate),
         ),
     [contracts, today],
   );
@@ -821,10 +828,7 @@ export default function PropertyDetail() {
                       <td className={tableCellCls}>
                         {contract.tenant.email ? (
                           <div className="flex items-center gap-1.5 text-on-surface-medium">
-                            <Mail
-                              size={14}
-                              className="text-on-surface-faint"
-                            />
+                            <Mail size={14} className="text-on-surface-faint" />
                             {contract.tenant.email}
                           </div>
                         ) : (
@@ -833,10 +837,7 @@ export default function PropertyDetail() {
                       </td>
                       <td className={`${tableCellCls} hidden sm:table-cell`}>
                         <div className="flex items-center gap-1.5 text-on-surface-medium">
-                          <Phone
-                            size={14}
-                            className="text-on-surface-faint"
-                          />
+                          <Phone size={14} className="text-on-surface-faint" />
                           {contract.tenant.phone}
                         </div>
                       </td>
@@ -1084,6 +1085,17 @@ export default function PropertyDetail() {
           )}
         </>
       )}
+
+      <div className="mt-6">
+        <SealCard
+          propertyId={property.id}
+          sealSupplyCode={property.sealSupplyCode}
+          sealBranchCode={property.sealBranchCode}
+          sealLastSyncedAt={property.sealLastSyncedAt}
+          sealLastSyncError={property.sealLastSyncError}
+          onPropertyUpdate={(p) => setProperty(p as Property)}
+        />
+      </div>
 
       <Modal
         isOpen={modalOpen}

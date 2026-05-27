@@ -23,6 +23,8 @@ import { SeedModule } from './seed/seed.module';
 import { StorageModule } from './storage/storage.module';
 import { QueueModule } from './queue/queue.module';
 import { ReceiptPdfModule } from './receipt/pdf/receipt-pdf.module';
+import { SealModule } from './seal/seal.module';
+import { SealBillModule } from './seal-bill/seal-bill.module';
 import { JwtGuard } from './auth/guards/jwt.guard';
 
 @Module({
@@ -57,6 +59,8 @@ import { JwtGuard } from './auth/guards/jwt.guard';
     StorageModule,
     QueueModule,
     ReceiptPdfModule.forRoot(),
+    SealModule,
+    SealBillModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: JwtGuard }],

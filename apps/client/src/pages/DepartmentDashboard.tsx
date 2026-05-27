@@ -436,7 +436,8 @@ export default function DepartmentDashboard() {
     }
 
     return Array.from(grouped.values()).sort(
-      (a, b) => b.year - a.year || b.month - a.month || b.key.localeCompare(a.key),
+      (a, b) =>
+        b.year - a.year || b.month - a.month || b.key.localeCompare(a.key),
     );
   }, [readings, meterTypeById]);
 

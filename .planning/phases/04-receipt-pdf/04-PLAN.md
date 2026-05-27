@@ -8,15 +8,15 @@ This is a plan only. No source files are modified by this document.
 
 ## 0. Locked decisions
 
-| Decision | Choice |
-|---|---|
-| Trigger | **Manual button in the receipt modal.** No auto-generation on status change. |
-| Async strategy | **BullMQ + Redis**, in-process worker. No Lambda. |
-| Storage | **S3 API**, one implementation. **MinIO** in dev, **AWS S3** in prod (swap = env var). |
-| Library | `pdfkit` + `Roboto-Regular.ttf` for Unicode. |
-| Regeneration | When `POST /contract/:id/receipt` rewrites a receipt that already has a `pdfKey`, **auto-enqueue** a fresh PDF job overwriting the same key. |
-| Content | Receipt header + tenant full name + **tenant DNI** + property address + items table + totals. **No logo, no header image, no status pill.** |
-| Locale | Spanish only (`es-PE`). |
+| Decision        | Choice                                                                                                                                                |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trigger         | **Manual button in the receipt modal.** No auto-generation on status change.                                                                          |
+| Async strategy  | **BullMQ + Redis**, in-process worker. No Lambda.                                                                                                     |
+| Storage         | **S3 API**, one implementation. **MinIO** in dev, **AWS S3** in prod (swap = env var).                                                                |
+| Library         | `pdfkit` + `Roboto-Regular.ttf` for Unicode.                                                                                                          |
+| Regeneration    | When `POST /contract/:id/receipt` rewrites a receipt that already has a `pdfKey`, **auto-enqueue** a fresh PDF job overwriting the same key.          |
+| Content         | Receipt header + tenant full name + **tenant DNI** + property address + items table + totals. **No logo, no header image, no status pill.**           |
+| Locale          | Spanish only (`es-PE`).                                                                                                                               |
 | Status agnostic | PDF can be generated regardless of receipt status. Works under the current 3-state model and the planned 2-state model from Phase 05 with no rewrite. |
 
 ---
@@ -56,14 +56,14 @@ When `POST /contract/:contractId/receipt?month=&year=` rewrites a receipt:
 
 ### Page sections (top → bottom)
 
-| Section | Content | Source |
-|---|---|---|
-| Title block | `RECIBO DE ALQUILER` (24 pt) + period (`Mayo 2026`) + receipt ID short form | `period`, `id` |
-| Tenant block | `Inquilino: <full name>` + `DNI: <documentId>` | `tenantName`, `tenantDocumentId` (new snapshot column, §4) |
-| Property block | `Departamento: <name>` + `Dirección: <address>` | `departmentName`, `propertyAddress` |
-| Items table | Two columns: `Descripción` / `Monto`. One row per `items[]` entry. Payments render with negative amounts (`- S/ 500.00`). | `items[]` |
-| Totals block | `Total facturado: S/ X` / `Total pagado: S/ Y` / **bold** `Saldo: S/ Z` | `totalDue`, `totalPayments`, `balance` |
-| Footer | `Generado el <fecha hora>` | `pdfGeneratedAt` |
+| Section        | Content                                                                                                                   | Source                                                     |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Title block    | `RECIBO DE ALQUILER` (24 pt) + period (`Mayo 2026`) + receipt ID short form                                               | `period`, `id`                                             |
+| Tenant block   | `Inquilino: <full name>` + `DNI: <documentId>`                                                                            | `tenantName`, `tenantDocumentId` (new snapshot column, §4) |
+| Property block | `Departamento: <name>` + `Dirección: <address>`                                                                           | `departmentName`, `propertyAddress`                        |
+| Items table    | Two columns: `Descripción` / `Monto`. One row per `items[]` entry. Payments render with negative amounts (`- S/ 500.00`). | `items[]`                                                  |
+| Totals block   | `Total facturado: S/ X` / `Total pagado: S/ Y` / **bold** `Saldo: S/ Z`                                                   | `totalDue`, `totalPayments`, `balance`                     |
+| Footer         | `Generado el <fecha hora>`                                                                                                | `pdfGeneratedAt`                                           |
 
 ### Formatting
 
@@ -89,10 +89,13 @@ Single driver: **S3 SDK pointing at any S3-compatible endpoint**. MinIO in dev i
 // apps/api/src/storage/receipt-storage.interface.ts
 export interface ReceiptStorage {
   upload(key: string, body: Buffer, contentType: string): Promise<void>;
-  getDownloadUrl(key: string, opts?: {
-    expiresInSec?: number;
-    filename?: string;
-  }): Promise<string>;
+  getDownloadUrl(
+    key: string,
+    opts?: {
+      expiresInSec?: number;
+      filename?: string;
+    },
+  ): Promise<string>;
   delete(key: string): Promise<void>;
   exists(key: string): Promise<boolean>;
 }
@@ -113,7 +116,7 @@ export class S3ReceiptStorage implements ReceiptStorage {
     this.bucket = config.getOrThrow('AWS_S3_BUCKET');
     this.client = new S3Client({
       region: config.get('AWS_REGION', 'us-east-1'),
-      endpoint: config.get('AWS_S3_ENDPOINT'),        // set → MinIO; unset → AWS
+      endpoint: config.get('AWS_S3_ENDPOINT'), // set → MinIO; unset → AWS
       forcePathStyle: !!config.get('AWS_S3_ENDPOINT'), // required for MinIO
       credentials: {
         accessKeyId: config.getOrThrow('AWS_ACCESS_KEY_ID'),
@@ -122,10 +125,18 @@ export class S3ReceiptStorage implements ReceiptStorage {
     });
   }
 
-  upload(key, body, contentType) { /* PutObjectCommand */ }
-  getDownloadUrl(key, opts)      { /* getSignedUrl + ResponseContentDisposition */ }
-  delete(key)                    { /* DeleteObjectCommand */ }
-  exists(key)                    { /* HeadObjectCommand, 404 → false */ }
+  upload(key, body, contentType) {
+    /* PutObjectCommand */
+  }
+  getDownloadUrl(key, opts) {
+    /* getSignedUrl + ResponseContentDisposition */
+  }
+  delete(key) {
+    /* DeleteObjectCommand */
+  }
+  exists(key) {
+    /* HeadObjectCommand, 404 → false */
+  }
 }
 ```
 
@@ -139,7 +150,7 @@ New `docker-compose.dev.yml` at repo root (or extend an existing compose file):
 services:
   minio:
     image: minio/minio:latest
-    ports: ['9000:9000', '9001:9001']  # 9000=API, 9001=web console
+    ports: ['9000:9000', '9001:9001'] # 9000=API, 9001=web console
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
@@ -160,15 +171,15 @@ Bucket bootstrap: on API boot, call `HeadBucket`; if 404, `CreateBucket`. No CLI
 
 ### Env config
 
-| Var | Dev value | Prod value |
-|---|---|---|
-| `AWS_S3_BUCKET` | `receipts` | `<real bucket>` |
-| `AWS_S3_ENDPOINT` | `http://localhost:9000` | *unset* |
-| `AWS_REGION` | `us-east-1` | `<real region>` |
-| `AWS_ACCESS_KEY_ID` | `minioadmin` | IAM-issued |
-| `AWS_SECRET_ACCESS_KEY` | `minioadmin` | IAM-issued |
-| `STORAGE_URL_TTL_SECONDS` | `300` | `300` |
-| `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | managed Redis |
+| Var                         | Dev value               | Prod value      |
+| --------------------------- | ----------------------- | --------------- |
+| `AWS_S3_BUCKET`             | `receipts`              | `<real bucket>` |
+| `AWS_S3_ENDPOINT`           | `http://localhost:9000` | _unset_         |
+| `AWS_REGION`                | `us-east-1`             | `<real region>` |
+| `AWS_ACCESS_KEY_ID`         | `minioadmin`            | IAM-issued      |
+| `AWS_SECRET_ACCESS_KEY`     | `minioadmin`            | IAM-issued      |
+| `STORAGE_URL_TTL_SECONDS`   | `300`                   | `300`           |
+| `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379`    | managed Redis   |
 
 Production swap = unset `AWS_S3_ENDPOINT` + swap creds. No code change.
 
@@ -261,12 +272,12 @@ All new columns are nullable (or have safe defaults). `synchronize: true` picks 
 
 ## 6. API surface
 
-| Verb | Path | Purpose |
-|---|---|---|
-| `POST` | `/contracts/:contractId/receipts/:receiptId/pdf` | Enqueue generation. Returns `202 { jobId, pdfStatus: 'queued' }`. Idempotent — if `pdfStatus IN ('queued','rendering')` already, returns the existing job. If `pdfStatus='ready'`, behaves as regenerate (overwrite). |
-| `GET` | `/contracts/:contractId/receipts/:receiptId/pdf/status` | Returns `{ pdfStatus, pdfGeneratedAt, pdfError }`. Used by frontend polling. |
-| `GET` | `/contracts/:contractId/receipts/:receiptId/pdf` | 302 redirect to a 5-min signed URL with `ResponseContentDisposition: attachment; filename="<localized>"`. 404 if `pdfKey IS NULL`. |
-| `DELETE` | `/contracts/:contractId/receipts/:receiptId/pdf` | Removes the stored object and nulls the columns. **Internal only** — called by the receipt regenerate path on auto-update, and by Phase 05's status-revert flow if it lands. Not exposed to the UI. |
+| Verb     | Path                                                    | Purpose                                                                                                                                                                                                               |
+| -------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST`   | `/contracts/:contractId/receipts/:receiptId/pdf`        | Enqueue generation. Returns `202 { jobId, pdfStatus: 'queued' }`. Idempotent — if `pdfStatus IN ('queued','rendering')` already, returns the existing job. If `pdfStatus='ready'`, behaves as regenerate (overwrite). |
+| `GET`    | `/contracts/:contractId/receipts/:receiptId/pdf/status` | Returns `{ pdfStatus, pdfGeneratedAt, pdfError }`. Used by frontend polling.                                                                                                                                          |
+| `GET`    | `/contracts/:contractId/receipts/:receiptId/pdf`        | 302 redirect to a 5-min signed URL with `ResponseContentDisposition: attachment; filename="<localized>"`. 404 if `pdfKey IS NULL`.                                                                                    |
+| `DELETE` | `/contracts/:contractId/receipts/:receiptId/pdf`        | Removes the stored object and nulls the columns. **Internal only** — called by the receipt regenerate path on auto-update, and by Phase 05's status-revert flow if it lands. Not exposed to the UI.                   |
 
 ### Existing routes — adjustment
 
@@ -274,13 +285,13 @@ All new columns are nullable (or have safe defaults). `synchronize: true` picks 
 
 ### Error codes
 
-| Code | When |
-|---|---|
-| `RECEIPT_NOT_FOUND` | 404 — no row for `(contractId, receiptId)` |
-| `PDF_NOT_READY` | 404 — `GET …/pdf` when `pdfStatus != 'ready'` |
-| `PDF_RENDER_FAILED` | 500 — worker exception; surfaces in `pdfError` |
-| `STORAGE_UNAVAILABLE` | 503 — S3/MinIO 5xx or timeout |
-| `QUEUE_UNAVAILABLE` | 503 — Redis unreachable |
+| Code                  | When                                           |
+| --------------------- | ---------------------------------------------- |
+| `RECEIPT_NOT_FOUND`   | 404 — no row for `(contractId, receiptId)`     |
+| `PDF_NOT_READY`       | 404 — `GET …/pdf` when `pdfStatus != 'ready'`  |
+| `PDF_RENDER_FAILED`   | 500 — worker exception; surfaces in `pdfError` |
+| `STORAGE_UNAVAILABLE` | 503 — S3/MinIO 5xx or timeout                  |
+| `QUEUE_UNAVAILABLE`   | 503 — Redis unreachable                        |
 
 ---
 
@@ -292,12 +303,12 @@ Add a `Generar PDF` / `Descargar PDF` button to the receipt modal footer, **next
 
 State machine:
 
-| `receipt.pdfStatus` | Button label | Behavior |
-|---|---|---|
-| `idle` (or absent) | `Generar PDF` | POST → start polling |
-| `queued` / `rendering` | `Generando PDF…` (disabled, spinner) | poll `…/pdf/status` every 1.5 s |
-| `ready` | `Descargar PDF` | window.location = `/contracts/:id/receipts/:id/pdf` (follows 302) |
-| `failed` | `Reintentar` + small error chip | POST again |
+| `receipt.pdfStatus`    | Button label                         | Behavior                                                          |
+| ---------------------- | ------------------------------------ | ----------------------------------------------------------------- |
+| `idle` (or absent)     | `Generar PDF`                        | POST → start polling                                              |
+| `queued` / `rendering` | `Generando PDF…` (disabled, spinner) | poll `…/pdf/status` every 1.5 s                                   |
+| `ready`                | `Descargar PDF`                      | window.location = `/contracts/:id/receipts/:id/pdf` (follows 302) |
+| `failed`               | `Reintentar` + small error chip      | POST again                                                        |
 
 ### Extra UI
 
@@ -326,9 +337,9 @@ pdfError: string | null;
 
 Only one remaining — everything else is locked.
 
-| # | Question | Default if no answer |
-|---|---|---|
-| Q1 | Does the regenerate-on-update rule apply even if the operator regenerates the same receipt many times in a row (rapid clicks)? Should the queue debounce? | No debounce; BullMQ collapses to the most recent job because the queue uses `jobId = receiptId` (unique constraint per receipt). Older queued jobs get superseded. |
+| #   | Question                                                                                                                                                  | Default if no answer                                                                                                                                               |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Q1  | Does the regenerate-on-update rule apply even if the operator regenerates the same receipt many times in a row (rapid clicks)? Should the queue debounce? | No debounce; BullMQ collapses to the most recent job because the queue uses `jobId = receiptId` (unique constraint per receipt). Older queued jobs get superseded. |
 
 ---
 

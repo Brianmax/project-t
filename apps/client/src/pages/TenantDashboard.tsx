@@ -49,12 +49,7 @@ interface Contract {
   };
 }
 
-type PaymentMethod =
-  | 'cash'
-  | 'bank_transfer'
-  | 'yape'
-  | 'plin'
-  | 'other';
+type PaymentMethod = 'cash' | 'bank_transfer' | 'yape' | 'plin' | 'other';
 
 interface Payment {
   id: string;

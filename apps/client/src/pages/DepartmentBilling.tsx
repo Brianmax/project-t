@@ -10,6 +10,7 @@ import {
   Send,
   Ban,
   Wallet,
+  FileDown,
 } from 'lucide-react';
 import { apiFetch, apiPost } from '../lib/api';
 import { PageSkeleton } from '../components/Skeleton';
@@ -19,6 +20,7 @@ import Dropdown from '../components/Dropdown';
 import { showSuccess, showError } from '../lib/toast';
 import { inputCls, btnCls } from '../lib/styles';
 import { formatDate } from '../lib/utils';
+import PaymentReportModal from '../components/payments/PaymentReportModal';
 
 interface Property {
   id: string;
@@ -206,6 +208,7 @@ export default function DepartmentBilling() {
 
   const [linkedPayments, setLinkedPayments] = useState<LinkedPayment[]>([]);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState('');
   const [paymentMethod, setPaymentMethod] =
@@ -347,7 +350,9 @@ export default function DepartmentBilling() {
           ).catch(() => []),
         ]);
         setExtraCharges(charges);
-        setReceiptMonths(months.map(({ month: m, year: y }) => ({ month: m, year: y })));
+        setReceiptMonths(
+          months.map(({ month: m, year: y }) => ({ month: m, year: y })),
+        );
 
         if (existingTermination) {
           setTermination(existingTermination);
@@ -599,9 +604,7 @@ export default function DepartmentBilling() {
             pdfStatus: PdfStatus;
             pdfGeneratedAt: string | null;
             pdfError: string | null;
-          }>(
-            `/contracts/${contractId}/receipts/${receiptId}/pdf/status`,
-          );
+          }>(`/contracts/${contractId}/receipts/${receiptId}/pdf/status`);
           setReceipt((prev) =>
             prev && prev.id === receiptId
               ? {
@@ -635,10 +638,9 @@ export default function DepartmentBilling() {
       const queued = await apiFetch<{
         jobId: string;
         pdfStatus: PdfStatus;
-      }>(
-        `/contracts/${contract.id}/receipts/${receipt.id}/pdf`,
-        { method: 'POST' },
-      );
+      }>(`/contracts/${contract.id}/receipts/${receipt.id}/pdf`, {
+        method: 'POST',
+      });
       setReceipt((prev) =>
         prev ? { ...prev, pdfStatus: queued.pdfStatus, pdfError: null } : prev,
       );
@@ -926,10 +928,7 @@ export default function DepartmentBilling() {
             setShowDeparture(true);
             if (lastReadingDate) {
               const d = new Date(lastReadingDate + 'T12:00:00');
-              if (
-                d.getFullYear() === year &&
-                d.getMonth() + 1 === month
-              ) {
+              if (d.getFullYear() === year && d.getMonth() + 1 === month) {
                 setDepartureDay(String(d.getDate()));
               }
             }
@@ -971,146 +970,147 @@ export default function DepartmentBilling() {
 
           <div className="border-t border-border pt-4 grid grid-cols-1 lg:grid-cols-5 gap-4">
             <div className="lg:col-span-3 space-y-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-muted mb-3">
-              Cierre de contrato
-            </p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-muted mb-3">
+                Cierre de contrato
+              </p>
 
-            {termination ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 ring-1 ring-red-200/50 dark:ring-red-700/40">
-                    <Ban size={11} />
-                    Contrato cerrado
-                  </span>
+              {termination ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 ring-1 ring-red-200/50 dark:ring-red-700/40">
+                      <Ban size={11} />
+                      Contrato cerrado
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-[13px]">
+                    <span className="text-on-surface-medium">
+                      Fecha esperada de salida
+                    </span>
+                    <span className="text-on-surface font-medium">
+                      {formatDate(termination.expectedDepartureDate)}
+                    </span>
+                    <span className="text-on-surface-medium">
+                      Fecha real de salida
+                    </span>
+                    <span className="text-on-surface font-medium">
+                      {formatDate(termination.actualDepartureDate)}
+                    </span>
+                    {termination.apartmentCondition && (
+                      <>
+                        <span className="text-on-surface-medium">
+                          Condicion del apartamento
+                        </span>
+                        <span className="text-on-surface font-medium">
+                          {termination.apartmentCondition}
+                        </span>
+                      </>
+                    )}
+                    <span className="text-on-surface-medium">
+                      Adelanto aplicado
+                    </span>
+                    <span className="text-on-surface font-medium">
+                      S/ {Number(termination.advanceApplied).toFixed(2)} → cubre
+                      ultimo mes
+                    </span>
+                    <span className="text-on-surface-medium">
+                      Deposito de garantia
+                    </span>
+                    <span className="text-on-surface font-medium">
+                      S/ {Number(termination.guaranteeDeposit).toFixed(2)}
+                    </span>
+                    <span className="text-on-surface-medium">Deduccion</span>
+                    <span className="text-on-surface font-medium">
+                      S/ {Number(termination.guaranteeDeduction).toFixed(2)}
+                    </span>
+                    {Number(termination.servicesCost) > 0 && (
+                      <>
+                        <span className="text-on-surface-medium">
+                          Servicios del mes
+                        </span>
+                        <span className="font-medium text-red-600 dark:text-red-400">
+                          − S/ {Number(termination.servicesCost).toFixed(2)}
+                        </span>
+                      </>
+                    )}
+                    <span className="text-on-surface-medium font-semibold">
+                      A devolver (garantia)
+                    </span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                      S/ {Number(termination.guaranteeReturn).toFixed(2)}
+                    </span>
+                    {Number(termination.rentRefund) > 0 && (
+                      <>
+                        <span className="text-on-surface-medium font-semibold">
+                          Devolucion alquiler
+                        </span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                          S/ {Number(termination.rentRefund).toFixed(2)}
+                        </span>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-[13px]">
-                  <span className="text-on-surface-medium">
-                    Fecha esperada de salida
-                  </span>
-                  <span className="text-on-surface font-medium">
-                    {formatDate(termination.expectedDepartureDate)}
-                  </span>
-                  <span className="text-on-surface-medium">
-                    Fecha real de salida
-                  </span>
-                  <span className="text-on-surface font-medium">
-                    {formatDate(termination.actualDepartureDate)}
-                  </span>
-                  {termination.apartmentCondition && (
-                    <>
-                      <span className="text-on-surface-medium">
-                        Condicion del apartamento
-                      </span>
-                      <span className="text-on-surface font-medium">
-                        {termination.apartmentCondition}
-                      </span>
-                    </>
-                  )}
-                  <span className="text-on-surface-medium">
-                    Adelanto aplicado
-                  </span>
-                  <span className="text-on-surface font-medium">
-                    S/ {Number(termination.advanceApplied).toFixed(2)} → cubre
-                    ultimo mes
-                  </span>
-                  <span className="text-on-surface-medium">
-                    Deposito de garantia
-                  </span>
-                  <span className="text-on-surface font-medium">
-                    S/ {Number(termination.guaranteeDeposit).toFixed(2)}
-                  </span>
-                  <span className="text-on-surface-medium">Deduccion</span>
-                  <span className="text-on-surface font-medium">
-                    S/ {Number(termination.guaranteeDeduction).toFixed(2)}
-                  </span>
-                  {Number(termination.servicesCost) > 0 && (
-                    <>
-                      <span className="text-on-surface-medium">
-                        Servicios del mes
-                      </span>
-                      <span className="font-medium text-red-600 dark:text-red-400">
-                        − S/ {Number(termination.servicesCost).toFixed(2)}
-                      </span>
-                    </>
-                  )}
-                  <span className="text-on-surface-medium font-semibold">
-                    A devolver (garantia)
-                  </span>
-                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                    S/ {Number(termination.guaranteeReturn).toFixed(2)}
-                  </span>
-                  {Number(termination.rentRefund) > 0 && (
-                    <>
-                      <span className="text-on-surface-medium font-semibold">
-                        Devolucion alquiler
-                      </span>
-                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                        S/ {Number(termination.rentRefund).toFixed(2)}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1">
-                  <span className="text-[13px] font-medium text-on-surface-medium">
-                    Fecha real de salida
-                  </span>
-                  <span className="text-[14px] font-semibold text-on-surface">
-                    {departureDay
-                      ? formatDate(actualDepartureDate, {
-                          day: '2-digit',
-                          month: 'long',
-                          year: 'numeric',
-                        })
-                      : '— (ingresa Día de salida)'}
-                  </span>
-                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1">
+                    <span className="text-[13px] font-medium text-on-surface-medium">
+                      Fecha real de salida
+                    </span>
+                    <span className="text-[14px] font-semibold text-on-surface">
+                      {departureDay
+                        ? formatDate(actualDepartureDate, {
+                            day: '2-digit',
+                            month: 'long',
+                            year: 'numeric',
+                          })
+                        : '— (ingresa Día de salida)'}
+                    </span>
+                  </div>
 
-                <div>
-                  <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
-                    Condicion del apartamento
-                  </label>
-                  <textarea
-                    value={apartmentCondition}
-                    onChange={(e) => setApartmentCondition(e.target.value)}
-                    placeholder="Descripcion del estado del apartamento..."
-                    rows={2}
-                    className={inputCls + ' resize-none'}
-                  />
-                </div>
+                  <div>
+                    <label className="block text-[13px] font-medium text-on-surface-medium mb-1.5">
+                      Condicion del apartamento
+                    </label>
+                    <textarea
+                      value={apartmentCondition}
+                      onChange={(e) => setApartmentCondition(e.target.value)}
+                      placeholder="Descripcion del estado del apartamento..."
+                      rows={2}
+                      className={inputCls + ' resize-none'}
+                    />
+                  </div>
 
-                <p className="text-[12px] text-on-surface-muted">
-                  Las reparaciones o daños se registran como cargos extras
-                  arriba — se descontarán automáticamente de los créditos.
-                </p>
-
-                <button
-                  onClick={handleTerminate}
-                  disabled={
-                    !departureDay ||
-                    missingReceiptMonths.length > 0 ||
-                    terminationLoading
-                  }
-                  className="w-full py-2.5 bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:bg-surface-raised disabled:text-on-surface-faint text-white text-sm font-medium rounded-xl shadow-sm transition-all duration-150 flex items-center justify-center gap-2"
-                >
-                  <Ban size={15} />
-                  {terminationLoading
-                    ? 'Procesando...'
-                    : 'Confirmar cierre de contrato'}
-                </button>
-                {missingReceiptMonths.length > 0 && (
-                  <p className="text-[12px] text-red-600 dark:text-red-400">
-                    Faltan recibos:{' '}
-                    {missingReceiptMonths
-                      .map((p) => `${monthAbbr[p.month - 1]} ${p.year}`)
-                      .join(', ')}
-                    . Genera los recibos pendientes antes de cerrar el contrato.
+                  <p className="text-[12px] text-on-surface-muted">
+                    Las reparaciones o daños se registran como cargos extras
+                    arriba — se descontarán automáticamente de los créditos.
                   </p>
-                )}
-              </div>
-            )}
+
+                  <button
+                    onClick={handleTerminate}
+                    disabled={
+                      !departureDay ||
+                      missingReceiptMonths.length > 0 ||
+                      terminationLoading
+                    }
+                    className="w-full py-2.5 bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:bg-surface-raised disabled:text-on-surface-faint text-white text-sm font-medium rounded-xl shadow-sm transition-all duration-150 flex items-center justify-center gap-2"
+                  >
+                    <Ban size={15} />
+                    {terminationLoading
+                      ? 'Procesando...'
+                      : 'Confirmar cierre de contrato'}
+                  </button>
+                  {missingReceiptMonths.length > 0 && (
+                    <p className="text-[12px] text-red-600 dark:text-red-400">
+                      Faltan recibos:{' '}
+                      {missingReceiptMonths
+                        .map((p) => `${monthAbbr[p.month - 1]} ${p.year}`)
+                        .join(', ')}
+                      . Genera los recibos pendientes antes de cerrar el
+                      contrato.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {!termination && (
@@ -1452,7 +1452,8 @@ export default function DepartmentBilling() {
             <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
               Estado: {receiptStatusLabel[receipt.status]} • Total: S/{' '}
               {(
-                Number(receipt.totalDue) + Number(receipt.carryForwardBalance ?? 0)
+                Number(receipt.totalDue) +
+                Number(receipt.carryForwardBalance ?? 0)
               ).toFixed(2)}
               {Number(receipt.carryForwardBalance ?? 0) > 0 && (
                 <span className="ml-1 text-amber-600 dark:text-amber-400">
@@ -1466,29 +1467,38 @@ export default function DepartmentBilling() {
       )}
 
       {contract && !isTerminated && (
-        <button
-          onClick={handleGenerateReceipt}
-          disabled={
-            receiptLoading ||
-            receipt?.status === 'paid' ||
-            missingMeterTypes.length > 0
-          }
-          title={
-            receipt?.status === 'paid'
-              ? 'Recibo pagado — no se puede regenerar'
-              : missingMeterTypes.length > 0
-                ? 'Registra las lecturas pendientes antes de generar el recibo'
-                : undefined
-          }
-          className="w-full py-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-surface-raised disabled:text-on-surface-faint text-white text-sm font-medium rounded-xl shadow-sm shadow-blue-600/20 transition-all duration-150 flex items-center justify-center gap-2"
-        >
-          <FileText size={16} />
-          {receiptLoading
-            ? 'Generando...'
-            : receipt
-              ? 'Regenerar Recibo'
-              : 'Generar Recibo'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleGenerateReceipt}
+            disabled={
+              receiptLoading ||
+              receipt?.status === 'paid' ||
+              missingMeterTypes.length > 0
+            }
+            title={
+              receipt?.status === 'paid'
+                ? 'Recibo pagado — no se puede regenerar'
+                : missingMeterTypes.length > 0
+                  ? 'Registra las lecturas pendientes antes de generar el recibo'
+                  : undefined
+            }
+            className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-surface-raised disabled:text-on-surface-faint text-white text-sm font-medium rounded-xl shadow-sm shadow-blue-600/20 transition-all duration-150 flex items-center justify-center gap-2"
+          >
+            <FileText size={16} />
+            {receiptLoading
+              ? 'Generando...'
+              : receipt
+                ? 'Regenerar Recibo'
+                : 'Generar Recibo'}
+          </button>
+          <button
+            onClick={() => setReportModalOpen(true)}
+            title="Generar reporte de pagos"
+            className="py-3 px-3 border border-border text-on-surface-medium hover:bg-surface-alt text-sm font-medium rounded-xl transition-all duration-150 flex items-center justify-center gap-2"
+          >
+            <FileDown size={16} />
+          </button>
+        </div>
       )}
 
       <Modal
@@ -1546,23 +1556,24 @@ export default function DepartmentBilling() {
               </div>
             )}
 
-            {receipt.carryForwardDetails && receipt.carryForwardDetails.length > 0 && (
-              <div className="space-y-1.5 pt-2 border-t border-border">
-                <p className="text-[12px] font-semibold text-on-surface-medium pt-2 uppercase tracking-wider">
-                  Saldo anterior (Deuda pendiente)
-                </p>
-                {receipt.carryForwardDetails.map((item, i) => (
-                  <div key={i} className="flex justify-between text-[13px]">
-                    <span className="text-on-surface-medium">
-                      Saldo pendiente · {item.period}
-                    </span>
-                    <span className="font-medium text-red-600 dark:text-red-400">
-                      S/ {item.balance.toFixed(2)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+            {receipt.carryForwardDetails &&
+              receipt.carryForwardDetails.length > 0 && (
+                <div className="space-y-1.5 pt-2 border-t border-border">
+                  <p className="text-[12px] font-semibold text-on-surface-medium pt-2 uppercase tracking-wider">
+                    Saldo anterior (Deuda pendiente)
+                  </p>
+                  {receipt.carryForwardDetails.map((item, i) => (
+                    <div key={i} className="flex justify-between text-[13px]">
+                      <span className="text-on-surface-medium">
+                        Saldo pendiente · {item.period}
+                      </span>
+                      <span className="font-medium text-red-600 dark:text-red-400">
+                        S/ {item.balance.toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
             {linkedPayments.length > 0 && (
               <div className="space-y-1 pt-2 border-t border-border">
@@ -1570,10 +1581,7 @@ export default function DepartmentBilling() {
                   Pagos registrados
                 </p>
                 {linkedPayments.map((p) => (
-                  <div
-                    key={p.id}
-                    className="flex justify-between text-[13px]"
-                  >
+                  <div key={p.id} className="flex justify-between text-[13px]">
                     <span className="text-on-surface-medium">
                       {formatDate(p.date, {
                         day: '2-digit',
@@ -1598,9 +1606,7 @@ export default function DepartmentBilling() {
 
             <div className="bg-surface-alt rounded-xl ring-1 ring-border-ring p-4 space-y-1">
               <div className="flex justify-between text-sm">
-                <span className="text-on-surface-medium">
-                  Total mes actual
-                </span>
+                <span className="text-on-surface-medium">Total mes actual</span>
                 <span className="font-semibold">
                   S/ {receipt.totalDue.toFixed(2)}
                 </span>
@@ -1628,7 +1634,10 @@ export default function DepartmentBilling() {
                       : 'text-red-600 dark:text-red-400'
                   }
                 >
-                  S/ {Math.abs(receipt.balance - receipt.carryForwardBalance).toFixed(2)}
+                  S/{' '}
+                  {Math.abs(
+                    receipt.balance - receipt.carryForwardBalance,
+                  ).toFixed(2)}
                 </span>
               </div>
             </div>
@@ -1719,7 +1728,13 @@ export default function DepartmentBilling() {
             <div className="px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-700/40 text-[13px]">
               <span className="text-blue-700 dark:text-blue-300 font-medium">
                 Saldo del contrato: S/{' '}
-                <span className={ledger.balance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>
+                <span
+                  className={
+                    ledger.balance >= 0
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-red-600 dark:text-red-400'
+                  }
+                >
                   {ledger.balance.toFixed(2)}
                 </span>
               </span>
@@ -1737,8 +1752,12 @@ export default function DepartmentBilling() {
                 if (snap && snap.appliedCredit > 0) {
                   return (
                     <div className="flex justify-between items-center text-emerald-700 dark:text-emerald-300">
-                      <span>Total del recibo: S/ {snap.totalDue.toFixed(2)}</span>
-                      <span className="font-medium">− S/ {snap.appliedCredit.toFixed(2)} crédito</span>
+                      <span>
+                        Total del recibo: S/ {snap.totalDue.toFixed(2)}
+                      </span>
+                      <span className="font-medium">
+                        − S/ {snap.appliedCredit.toFixed(2)} crédito
+                      </span>
                     </div>
                   );
                 }
@@ -1813,15 +1832,26 @@ export default function DepartmentBilling() {
               className={inputCls}
             />
           </div>
-          <button
-            type="submit"
-            disabled={paymentSubmitting}
-            className={btnCls}
-          >
+          <button type="submit" disabled={paymentSubmitting} className={btnCls}>
             {paymentSubmitting ? 'Guardando...' : 'Registrar Pago'}
           </button>
         </form>
       </Modal>
+
+      {contract && (
+        <PaymentReportModal
+          isOpen={reportModalOpen}
+          onClose={() => setReportModalOpen(false)}
+          contracts={[
+            {
+              id: contract.id,
+              tenant: contract.tenant,
+              department: contract.department,
+            },
+          ]}
+          lockedContractId={contract.id}
+        />
+      )}
     </div>
   );
 }

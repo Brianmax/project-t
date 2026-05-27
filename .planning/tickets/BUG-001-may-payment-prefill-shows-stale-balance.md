@@ -11,7 +11,7 @@
 2. Register a payment for April that fully covers the receipt (linked via the receipt selector).
    April receipt flips to **PAID**.
 3. Bill May for the same contract — total **S/ 1412.00**.
-4. Open *Pagos → Nuevo Pago* (or *DepartmentBilling → Registrar Pago* for the May receipt).
+4. Open _Pagos → Nuevo Pago_ (or _DepartmentBilling → Registrar Pago_ for the May receipt).
 5. Select the contract, then the May receipt in the dropdown.
 
 **Expected:** amount field pre-fills with **S/ 1412.00** (full May balance).
@@ -39,10 +39,22 @@ payments to roll into the receipt being calculated:
 const payments = await this.paymentRepository.find({
   where: existingReceiptId
     ? [
-        { contractId, date: Between(periodStart, periodEnd), receiptId: IsNull() },
-        { contractId, date: Between(periodStart, periodEnd), receiptId: existingReceiptId },
+        {
+          contractId,
+          date: Between(periodStart, periodEnd),
+          receiptId: IsNull(),
+        },
+        {
+          contractId,
+          date: Between(periodStart, periodEnd),
+          receiptId: existingReceiptId,
+        },
       ]
-    : { contractId, date: Between(periodStart, periodEnd), receiptId: IsNull() },
+    : {
+        contractId,
+        date: Between(periodStart, periodEnd),
+        receiptId: IsNull(),
+      },
 });
 ```
 
@@ -54,7 +66,7 @@ filter conditions did not exclude the April payment as intended. Candidate cause
    step didn't actually persist `receiptId` (or if the row was later edited to detach the
    receipt). It also implies April was marked PAID via `recomputeReceipt`, which only sums
    payments where `p.receipt_id = receiptId` — so if `receipt_id` were null the receipt
-   would *not* have been auto-paid. Contradictory unless the receipt was marked paid
+   would _not_ have been auto-paid. Contradictory unless the receipt was marked paid
    manually (status set to PAID without a linked payment), so worth checking.
 2. **April payment was recorded with a date inside May** (e.g., entered on May 1 for the
    April period). `Between(periodStart, periodEnd)` on a `date` column would then match.
@@ -103,7 +115,7 @@ The combination of (1) the April payment's `receipt_id` and `date`, and (2) May'
   correct — any unlinked payment in the receipt's period offsets it. The product issue is
   that the operator's mental model differs from the engine's. Options:
   - Surface a "Pagos sin recibo aplicados a este recibo" line in the receipt preview so
-    the operator can see *why* the balance is what it is.
+    the operator can see _why_ the balance is what it is.
   - In the payment modal, when a receipt is selected, ignore receipt-period
     auto-application for the suggested amount and instead pre-fill with
     `totalDue − sum(payments where receipt_id = receipt.id)` so the suggestion reflects
@@ -125,8 +137,8 @@ The combination of (1) the April payment's `receipt_id` and `date`, and (2) May'
   last day. Against a Postgres `date` column this compares fine, but if `payment.date` is
   ever migrated to `timestamptz`, `Between(periodStart, periodEnd)` would silently drop
   payments timestamped later than 00:00 on the last day. Flagging for awareness.
-  *(Note: the date window is no longer used after the fix, so this is moot for receipt
-  calc — still worth fixing in any other code that uses the same idiom.)*
+  _(Note: the date window is no longer used after the fix, so this is moot for receipt
+  calc — still worth fixing in any other code that uses the same idiom.)_
 
 ---
 
@@ -168,7 +180,7 @@ The fix corrects future calculations, but the May receipt in your DB still has t
 `total_payments = 1408` / `balance = -4` baked in from before the fix. Two options:
 
 **Option A — fix from the UI (recommended for one-off cases):** open the May receipt in
-*DepartmentBilling* and click *Regenerar Recibo*. The fix-side `calculateReceipt` will
+_DepartmentBilling_ and click _Regenerar Recibo_. The fix-side `calculateReceipt` will
 recompute `totalPayments = 0` (no linked payments yet) and persist `balance = -1412`.
 This works because the regenerate-with-linked-payments guard (`RECEIPT_HAS_PAYMENTS`)
 only triggers when the receipt already has linked payments — May doesn't yet.

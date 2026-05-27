@@ -35,6 +35,7 @@ The initial setup of the monorepo is complete, and the core features of the Prop
 
 3.  **Run Development Servers:**
     Open another terminal window at the project root and execute the following command to start both the backend (`api`) and frontend (`client`) in development mode:
+
     ```bash
     npm run dev
     ```

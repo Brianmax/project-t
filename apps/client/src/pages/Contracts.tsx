@@ -86,9 +86,7 @@ export default function Contracts() {
   const [departmentId, setDepartmentId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editingContract, setEditingContract] = useState<Contract | null>(
-    null,
-  );
+  const [editingContract, setEditingContract] = useState<Contract | null>(null);
   const [editStartDate, setEditStartDate] = useState('');
   const [editEndDate, setEditEndDate] = useState('');
   const [editRentAmount, setEditRentAmount] = useState('');
@@ -187,12 +185,7 @@ export default function Contracts() {
 
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (
-      !editingContract ||
-      !editStartDate ||
-      !editEndDate ||
-      !editRentAmount
-    ) {
+    if (!editingContract || !editStartDate || !editEndDate || !editRentAmount) {
       return;
     }
 
